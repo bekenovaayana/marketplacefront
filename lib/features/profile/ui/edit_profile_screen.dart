@@ -96,7 +96,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       _selectedLanguage =
           (profile.preferredLanguage == 'ru' ||
               profile.preferredLanguage == 'en')
-          ? profile.preferredLanguage
+          ? profile.preferredLanguage!
           : 'en';
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() {});

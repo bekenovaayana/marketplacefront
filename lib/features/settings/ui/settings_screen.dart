@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
+import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
 import 'package:marketplace_frontend/shared/widgets/app_scaffold.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -9,45 +10,59 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final items = <_SettingsItem>[
-      _SettingsItem(
-        title: 'Notifications',
-        subtitle: 'Manage alerts and preferences',
-        onTap: () => context.push('/settings/notifications'),
-      ),
-      _SettingsItem(
-        title: 'Privacy',
-        subtitle: 'Control your privacy options',
-        onTap: () => context.push('/settings/privacy'),
-      ),
-      _SettingsItem(
-        title: 'Support',
-        subtitle: 'Help and contact',
-        onTap: () => context.push('/settings/support'),
-      ),
-    ];
+    final auth = ref.watch(authControllerProvider);
+    String t(String key) => AppStrings.of(context, key);
 
     return AppScaffold(
-      title: 'Settings',
+      title: t('settings'),
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  return ListTile(
-                    title: Text(item.title),
-                    subtitle: item.subtitle == null
-                        ? null
-                        : Text(item.subtitle!),
+              child: ListView(
+                children: [
+                  ListTile(
+                    title: Text(t('settingsNotifications')),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: item.onTap,
-                  );
-                },
-                separatorBuilder: (context, index) => const Divider(height: 1),
-                itemCount: items.length,
+                    onTap: () {
+                      if (!auth.isAuthenticated) {
+                        final from = Uri.encodeComponent(
+                          GoRouterState.of(context).uri.toString(),
+                        );
+                        context.push('/auth-gate?from=$from');
+                        return;
+                      }
+                      context.push('/settings/notifications');
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    title: Text(t('settingsAppearance')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/settings/theme'),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    title: Text(t('settingsLanguage')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/settings/language'),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    title: Text(t('settingsPasswordChange')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      if (!auth.isAuthenticated) {
+                        final from = Uri.encodeComponent(
+                          GoRouterState.of(context).uri.toString(),
+                        );
+                        context.push('/auth-gate?from=$from');
+                        return;
+                      }
+                      context.push('/settings/password');
+                    },
+                  ),
+                ],
               ),
             ),
             const Divider(height: 1),
@@ -56,10 +71,12 @@ class SettingsScreen extends ConsumerWidget {
               child: SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () =>
-                      ref.read(authControllerProvider.notifier).logout(),
+                  onPressed: () async {
+                    await ref.read(authControllerProvider.notifier).logout();
+                    if (context.mounted) context.go('/login');
+                  },
                   icon: const Icon(Icons.logout),
-                  label: const Text('Logout'),
+                  label: Text(t('logout')),
                 ),
               ),
             ),
@@ -68,16 +85,4 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
-}
-
-class _SettingsItem {
-  const _SettingsItem({
-    required this.title,
-    this.subtitle,
-    required this.onTap,
-  });
-
-  final String title;
-  final String? subtitle;
-  final VoidCallback onTap;
 }

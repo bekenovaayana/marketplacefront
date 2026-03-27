@@ -9,8 +9,11 @@ import 'package:marketplace_frontend/features/auth/ui/register_page.dart';
 import 'package:marketplace_frontend/features/notifications/ui/notifications_screen.dart';
 import 'package:marketplace_frontend/features/profile/ui/edit_profile_screen.dart';
 import 'package:marketplace_frontend/features/promotions/ui/promote_listing_screen.dart';
-import 'package:marketplace_frontend/features/settings/ui/settings_stub_screen.dart';
+import 'package:marketplace_frontend/features/settings/ui/settings_language_screen.dart';
+import 'package:marketplace_frontend/features/settings/ui/settings_notifications_screen.dart';
+import 'package:marketplace_frontend/features/settings/ui/settings_password_screen.dart';
 import 'package:marketplace_frontend/features/settings/ui/settings_screen.dart';
+import 'package:marketplace_frontend/features/settings/ui/settings_theme_screen.dart';
 import 'package:marketplace_frontend/shared/widgets/main_tabs_page.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -24,7 +27,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);
       if (!auth.initialized) return null;
-      final protectedRoutes = <String>{'/profile/edit', '/promote'};
+      final protectedRoutes = <String>{
+        '/profile/edit',
+        '/promote',
+        '/notifications',
+        '/settings/notifications',
+        '/settings/password',
+      };
       if (auth.initialized &&
           auth.isGuest &&
           protectedRoutes.contains(state.matchedLocation)) {
@@ -61,7 +70,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/app',
         builder: (context, state) {
           final tab = int.tryParse(state.uri.queryParameters['tab'] ?? '') ?? 0;
-          return MainTabsPage(initialIndex: tab.clamp(0, 5));
+          return MainTabsPage(initialIndex: tab.clamp(0, 4));
         },
       ),
       GoRoute(
@@ -74,18 +83,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: 'notifications',
-            builder: (context, state) =>
-                const SettingsStubScreen(title: 'Notifications'),
+            builder: (context, state) => const SettingsNotificationsScreen(),
           ),
           GoRoute(
-            path: 'privacy',
-            builder: (context, state) =>
-                const SettingsStubScreen(title: 'Privacy'),
+            path: 'theme',
+            builder: (context, state) => const SettingsThemeScreen(),
           ),
           GoRoute(
-            path: 'support',
-            builder: (context, state) =>
-                const SettingsStubScreen(title: 'Support'),
+            path: 'language',
+            builder: (context, state) => const SettingsLanguageScreen(),
+          ),
+          GoRoute(
+            path: 'password',
+            builder: (context, state) => const SettingsPasswordScreen(),
           ),
         ],
       ),

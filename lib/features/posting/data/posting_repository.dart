@@ -86,17 +86,21 @@ class PostingRepository {
 
   Future<List<ListingMine>> myListings({
     required String status,
+    int? categoryId,
+    String sort = 'newest',
     int page = 1,
     int pageSize = 20,
   }) async {
-    final response = await _dio.get(
-      '/listings/me',
-      queryParameters: {
-        'status': status,
-        'page': page,
-        'page_size': pageSize,
-      },
-    );
+    final params = <String, dynamic>{
+      'status': status,
+      'page': page,
+      'page_size': pageSize,
+      'sort': sort,
+    };
+    if (categoryId != null) {
+      params['category_id'] = categoryId;
+    }
+    final response = await _dio.get('/listings/me', queryParameters: params);
     final data = response.data;
     final items = data is List<dynamic>
         ? data

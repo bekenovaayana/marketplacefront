@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:marketplace_frontend/core/errors/error_mapper.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
-import 'package:marketplace_frontend/features/profile/state/profile_controller.dart';
 import 'package:marketplace_frontend/features/profile/state/my_active_listings_controller.dart';
-import 'package:marketplace_frontend/features/posting/data/posting_models.dart';
-import 'package:marketplace_frontend/features/listings/ui/listing_detail_page.dart';
+import 'package:marketplace_frontend/features/profile/state/profile_controller.dart';
+import 'package:marketplace_frontend/features/profile/ui/widgets/profile_my_listings_panel.dart';
+import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
 import 'package:marketplace_frontend/shared/widgets/skeleton_box.dart';
 
 class ProfileTab extends ConsumerStatefulWidget {
@@ -18,80 +18,132 @@ class ProfileTab extends ConsumerStatefulWidget {
 
 class _ProfileTabState extends ConsumerState<ProfileTab>
     with AutomaticKeepAliveClientMixin {
-  bool _requestedLoad = false;
-  bool _requestedListings = false;
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _requestedProfileLoad = false;
+  bool _listingsBootstrapped = false;
 
   @override
   bool get wantKeepAlive => true;
 
   @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _bootstrapListings() async {
+    final n = ref.read(myActiveListingsProvider.notifier);
+    await n.ensureCategories();
+    if (mounted) await n.refresh();
+  }
+
+  @override
   Widget build(BuildContext context) {
     super.build(context);
+    String tt(String k) => AppStrings.of(context, k);
     final auth = ref.watch(authControllerProvider);
-    if (auth.isAuthenticated && !_requestedLoad) {
-      _requestedLoad = true;
+
+    if (!auth.isAuthenticated) {
+      _listingsBootstrapped = false;
+      _requestedProfileLoad = false;
+    }
+
+    if (auth.isAuthenticated && !_requestedProfileLoad) {
+      _requestedProfileLoad = true;
       Future.microtask(
         () => ref.read(profileControllerProvider.notifier).load(),
       );
     }
-    if (auth.isAuthenticated && !_requestedListings) {
-      _requestedListings = true;
-      Future.microtask(
-        () => ref.read(myActiveListingsProvider.notifier).load(),
-      );
+    if (auth.isAuthenticated && !_listingsBootstrapped) {
+      _listingsBootstrapped = true;
+      Future.microtask(_bootstrapListings);
     }
-    final state = ref.watch(profileControllerProvider);
-    final profile = state.profile;
-    final listingsState = ref.watch(myActiveListingsProvider);
+
+    final pstate = ref.watch(profileControllerProvider);
+    final profile = pstate.profile;
+
     if (auth.isGuest) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Profile'),
-          actions: [
-            IconButton(
-              tooltip: 'Settings',
-              onPressed: () => context.push('/settings'),
-              icon: const Icon(Icons.settings_outlined),
-            ),
-          ],
-        ),
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const SizedBox(height: 12),
-            const Icon(Icons.person_outline, size: 64),
-            const SizedBox(height: 12),
-            const Text(
-              'Sign in or create an account',
+            const SizedBox(height: 8),
+            Text(
+              tt('profileSignInSubtitle'),
               textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+              style: TextStyle(
+                fontSize: 15,
+                color: Colors.grey.shade800,
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(labelText: tt('profileEmail')),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: InputDecoration(labelText: tt('profilePassword')),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Save favorites, post listings, chat with sellers, and manage your profile.',
-              textAlign: TextAlign.center,
+            if (auth.error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  ErrorMapper.friendly(auth.error),
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: auth.isLoading
+                    ? null
+                    : () async {
+                        final ok = await ref
+                            .read(authControllerProvider.notifier)
+                            .login(
+                              email: _emailController.text.trim(),
+                              password: _passwordController.text,
+                            );
+                        if (ok && mounted) {
+                          _passwordController.clear();
+                          await _bootstrapListings();
+                        }
+                      },
+                child: auth.isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(tt('profileSignIn')),
+              ),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                final from = Uri.encodeComponent('/app?tab=5');
-                context.push('/auth-gate?from=$from');
-              },
-              child: const Text('Sign in / Create account'),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => context.push('/register'),
+              child: Text(tt('profileCreateAccount')),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.edit_outlined),
-                title: const Text('Edit profile'),
+                title: Text(tt('profileEdit')),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/auth-gate?from=/profile/edit'),
+                onTap: () =>
+                    context.push('/auth-gate?from=/profile/edit'),
               ),
             ),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.campaign_outlined),
-                title: const Text('Promote listing'),
+                title: Text(tt('profilePromoteShort')),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/auth-gate?from=/promote'),
               ),
@@ -102,232 +154,109 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        actions: [
-          IconButton(
-            tooltip: 'Settings',
-            onPressed: () => context.push('/settings'),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-      ),
       body: RefreshIndicator(
-        onRefresh: () {
-          if (!auth.isAuthenticated) return Future.value();
-          final a = ref.read(profileControllerProvider.notifier).load();
-          final b = ref.read(myActiveListingsProvider.notifier).load();
-          return Future.wait(<Future<void>>[a, b]);
+        onRefresh: () async {
+          await ref.read(profileControllerProvider.notifier).load();
+          await ref.read(myActiveListingsProvider.notifier).refresh();
         },
         child: ListView(
           key: const PageStorageKey('profile_tab_list'),
           padding: const EdgeInsets.all(16),
           children: [
-            if (state.isLoading) ...[
+            if (pstate.isLoading) ...[
               const SkeletonBox(height: 16, width: 140),
               const SizedBox(height: 10),
               const SkeletonBox(height: 42),
-              const SizedBox(height: 10),
-              const SkeletonBox(height: 80),
-              const SizedBox(height: 10),
-              const SkeletonBox(height: 42),
             ],
-            if (state.error != null)
+            if (pstate.error != null)
               ListTile(
                 title: Text(
-                  ErrorMapper.friendly(state.error),
+                  ErrorMapper.friendly(pstate.error),
                   style: const TextStyle(color: Colors.red),
                 ),
                 trailing: TextButton(
                   onPressed: () =>
                       ref.read(profileControllerProvider.notifier).load(),
-                  child: const Text('Retry'),
+                  child: Text(tt('retry')),
                 ),
               ),
-            _AccountCard(
-              isLoading: state.isLoading,
-              avatarUrl: profile?.avatarUrl,
-              fullName: profile?.fullName ?? '',
-              onTap: () async {
-                final changed = await context.push<bool>('/profile/edit');
-                if (changed == true && context.mounted) {
-                  await ref.read(profileControllerProvider.notifier).load();
-                  await ref.read(myActiveListingsProvider.notifier).load();
-                }
-              },
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundImage:
+                      ((profile?.avatarUrl ?? '').isNotEmpty)
+                          ? NetworkImage(profile!.avatarUrl!)
+                          : null,
+                  child: (profile?.avatarUrl ?? '').isEmpty
+                      ? const Icon(Icons.person_outline)
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        pstate.isLoading
+                            ? '…'
+                            : (profile?.fullName.isNotEmpty == true
+                                  ? profile!.fullName
+                                  : '—'),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          final changed =
+                              await context.push<bool>('/profile/edit');
+                          if (changed == true && mounted) {
+                            await ref
+                                .read(profileControllerProvider.notifier)
+                                .load();
+                            await ref
+                                .read(myActiveListingsProvider.notifier)
+                                .refresh();
+                          }
+                        },
+                        child: Text(tt('profileEdit')),
+                      ),
+                    ],
+                  ),
+                ),
+                OutlinedButton(
+                  onPressed: () async {
+                    await ref.read(authControllerProvider.notifier).logout();
+                    if (!mounted) return;
+                    if (!context.mounted) return;
+                    context.go('/login');
+                  },
+                  child: Text(tt('logout')),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.campaign_outlined),
-                title: const Text('Promote listing'),
-                subtitle: const Text('Boost your active listing'),
+                title: Text(tt('profilePromoteShort')),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   final changed = await context.push<bool>('/promote');
-                  if (changed == true && context.mounted) {
-                    await ref.read(myActiveListingsProvider.notifier).load();
+                  if (changed == true && mounted) {
+                    await ref
+                        .read(myActiveListingsProvider.notifier)
+                        .refresh();
                   }
                 },
               ),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'My Active Listings',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-            ),
             const SizedBox(height: 8),
-            if (listingsState.isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 18),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (listingsState.error != null)
-              Card(
-                child: ListTile(
-                  title: Text(
-                    ErrorMapper.friendly(listingsState.error),
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                  trailing: TextButton(
-                    onPressed: () =>
-                        ref.read(myActiveListingsProvider.notifier).load(),
-                    child: const Text('Retry'),
-                  ),
-                ),
-              )
-            else if (listingsState.items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 18),
-                child: Center(child: Text('You have no active listings')),
-              )
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemBuilder: (context, index) {
-                  final item = listingsState.items[index];
-                  return _ListingMineTile(
-                    item: item,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ListingDetailPage(listingId: item.id),
-                      ),
-                    ),
-                  );
-                },
-                separatorBuilder: (context, index) =>
-                    const SizedBox(height: 10),
-                itemCount: listingsState.items.length,
-              ),
+            const ProfileMyListingsPanel(),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _AccountCard extends StatelessWidget {
-  const _AccountCard({
-    required this.isLoading,
-    required this.avatarUrl,
-    required this.fullName,
-    required this.onTap,
-  });
-
-  final bool isLoading;
-  final String? avatarUrl;
-  final String fullName;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 26,
-                backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
-                    ? NetworkImage(avatarUrl!)
-                    : null,
-                child: (avatarUrl == null || avatarUrl!.isEmpty)
-                    ? const Icon(Icons.person_outline)
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isLoading
-                          ? 'Loading…'
-                          : (fullName.isEmpty ? 'Your account' : fullName),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Tap to edit profile',
-                      style: TextStyle(color: Colors.grey.shade700),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ListingMineTile extends StatelessWidget {
-  const _ListingMineTile({required this.item, required this.onTap});
-
-  final ListingMine item;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        leading: item.cover.isEmpty
-            ? const SizedBox(
-                width: 56,
-                height: 56,
-                child: Icon(Icons.image_outlined),
-              )
-            : ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  item.cover,
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    width: 56,
-                    height: 56,
-                    color: Colors.grey.shade200,
-                    child: const Icon(Icons.broken_image_outlined),
-                  ),
-                ),
-              ),
-        title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${item.price.toStringAsFixed(0)} • ${item.city}'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
       ),
     );
   }

@@ -86,16 +86,20 @@ class ListingMine {
     required this.title,
     required this.status,
     required this.price,
+    required this.currency,
     required this.city,
     required this.images,
+    required this.isBoosted,
   });
 
   final int id;
   final String title;
   final String status;
   final double price;
+  final String currency;
   final String city;
   final List<PostingImage> images;
+  final bool isBoosted;
 
   String get cover => images.isEmpty ? '' : images.first.url;
 
@@ -112,8 +116,59 @@ class ListingMine {
       title: json['title'] as String? ?? '',
       status: json['status'] as String? ?? '',
       price: (json['price'] as num?)?.toDouble() ?? 0,
+      currency: json['currency'] as String? ?? 'USD',
       city: json['city'] as String? ?? '',
       images: imageList,
+      isBoosted: json['is_boosted'] as bool? ?? false,
+    );
+  }
+}
+
+/// Minimal listing card data from GET /listings/{id}/preview.
+class ListingPreviewCard {
+  const ListingPreviewCard({
+    required this.listingId,
+    required this.title,
+    required this.price,
+    required this.currency,
+    required this.city,
+    required this.imageUrl,
+    required this.isBoosted,
+  });
+
+  final int listingId;
+  final String title;
+  final double price;
+  final String currency;
+  final String city;
+  final String imageUrl;
+  final bool isBoosted;
+
+  factory ListingPreviewCard.fromPreviewJson(
+    Map<String, dynamic> json,
+    int fallbackListingId,
+  ) {
+    final root = json['listing'] is Map<String, dynamic>
+        ? json['listing'] as Map<String, dynamic>
+        : json;
+    final id = (root['id'] as num?)?.toInt() ?? fallbackListingId;
+    final images = root['images'] as List<dynamic>? ?? [];
+    String url = '';
+    if (images.isNotEmpty && images.first is Map<String, dynamic>) {
+      url = (images.first as Map<String, dynamic>)['url'] as String? ?? '';
+    }
+    final primary = root['primary_image'] as String?;
+    if (url.isEmpty && primary != null) {
+      url = primary;
+    }
+    return ListingPreviewCard(
+      listingId: id,
+      title: root['title'] as String? ?? '',
+      price: (root['price'] as num?)?.toDouble() ?? 0,
+      currency: root['currency'] as String? ?? 'USD',
+      city: root['city'] as String? ?? '',
+      imageUrl: url,
+      isBoosted: root['is_boosted'] as bool? ?? false,
     );
   }
 }

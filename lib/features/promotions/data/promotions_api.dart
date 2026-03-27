@@ -63,10 +63,59 @@ class PromotionsCheckoutResponse {
   }
 }
 
+class PromotionListItem {
+  const PromotionListItem({
+    required this.id,
+    required this.listingId,
+    required this.status,
+    this.price,
+    this.currency,
+  });
+
+  final int id;
+  final int listingId;
+  final String status;
+  final double? price;
+  final String? currency;
+
+  factory PromotionListItem.fromJson(Map<String, dynamic> json) {
+    final listingRaw = json['listing'];
+    final listingId = (json['listing_id'] as num?)?.toInt() ??
+        (listingRaw is Map<String, dynamic>
+            ? (listingRaw['id'] as num?)?.toInt()
+            : null) ??
+        0;
+    return PromotionListItem(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      listingId: listingId,
+      status: json['status'] as String? ?? '',
+      price: (json['price'] as num?)?.toDouble() ??
+          (json['amount'] as num?)?.toDouble(),
+      currency: json['currency'] as String?,
+    );
+  }
+}
+
 class PromotionsApi {
   PromotionsApi(this._dio);
 
   final Dio _dio;
+
+  Future<List<PromotionListItem>> fetchPromotions({String? status}) async {
+    final response = await _dio.get(
+      '/promotions',
+      queryParameters: {
+        if (status != null && status.isNotEmpty) 'status': status,
+      },
+    );
+    final data = response.data;
+    final items = data is List<dynamic>
+        ? data
+        : ((data as Map<String, dynamic>)['items'] as List<dynamic>? ?? []);
+    return items
+        .map((e) => PromotionListItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
 
   Future<List<PromotionOptionDto>> getOptions() async {
     final response = await _dio.get('/promotions/options');

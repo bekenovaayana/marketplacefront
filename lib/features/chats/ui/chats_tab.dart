@@ -51,7 +51,6 @@ class _ChatsTabState extends ConsumerState<ChatsTab>
     final auth = ref.watch(authControllerProvider);
     if (!auth.isAuthenticated) {
       return Scaffold(
-        appBar: AppBar(title: Text(t('chats'))),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -86,7 +85,6 @@ class _ChatsTabState extends ConsumerState<ChatsTab>
     }
     final state = ref.watch(conversationsControllerProvider);
     return Scaffold(
-      appBar: AppBar(title: Text(t('chats'))),
       body: RefreshIndicator(
         onRefresh: () {
           if (!auth.isAuthenticated) return Future.value();

@@ -7,8 +7,12 @@ class UserMeResponse {
     required this.email,
     required this.bio,
     required this.city,
-    required this.preferredLanguage,
+    this.preferredLanguage,
     required this.phone,
+    required this.theme,
+    required this.notifyNewMessage,
+    required this.notifyContactRequest,
+    required this.notifyListingFavorited,
     required this.avatarUrl,
     required this.status,
     required this.emailVerified,
@@ -27,8 +31,12 @@ class UserMeResponse {
   final String email;
   final String bio;
   final String city;
-  final String preferredLanguage;
+  final String? preferredLanguage;
   final String phone;
+  final String theme;
+  final bool notifyNewMessage;
+  final bool notifyContactRequest;
+  final bool notifyListingFavorited;
   final String? avatarUrl;
   final String status;
   final bool emailVerified;
@@ -48,8 +56,13 @@ class UserMeResponse {
       email: json['email'] as String? ?? '',
       bio: json['bio'] as String? ?? '',
       city: json['city'] as String? ?? '',
-      preferredLanguage: json['preferred_language'] as String? ?? 'en',
+      preferredLanguage: json['preferred_language'] as String?,
       phone: json['phone'] as String? ?? '',
+      theme: json['theme'] as String? ?? 'system',
+      notifyNewMessage: json['notify_new_message'] as bool? ?? true,
+      notifyContactRequest: json['notify_contact_request'] as bool? ?? true,
+      notifyListingFavorited:
+          json['notify_listing_favorited'] as bool? ?? true,
       avatarUrl: json['avatar_url'] as String?,
       status: json['status'] as String? ?? 'active',
       emailVerified: json['email_verified'] as bool? ?? false,
@@ -72,6 +85,10 @@ class UpdateUserMeRequest {
     this.city,
     this.preferredLanguage,
     this.phone,
+    this.theme,
+    this.notifyNewMessage,
+    this.notifyContactRequest,
+    this.notifyListingFavorited,
   });
 
   final String? fullName;
@@ -81,6 +98,10 @@ class UpdateUserMeRequest {
   final String? city;
   final String? preferredLanguage;
   final String? phone;
+  final String? theme;
+  final bool? notifyNewMessage;
+  final bool? notifyContactRequest;
+  final bool? notifyListingFavorited;
 
   Map<String, dynamic> toJson() {
     return {
@@ -91,6 +112,10 @@ class UpdateUserMeRequest {
       'city': city,
       'preferred_language': preferredLanguage,
       'phone': phone,
+      'theme': theme,
+      'notify_new_message': notifyNewMessage,
+      'notify_contact_request': notifyContactRequest,
+      'notify_listing_favorited': notifyListingFavorited,
     }..removeWhere((key, value) => value == null);
   }
 }

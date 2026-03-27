@@ -7,6 +7,7 @@ import 'package:marketplace_frontend/features/notifications/state/notifications_
 import 'package:marketplace_frontend/features/notifications/state/unread_notifications_provider.dart';
 import 'package:marketplace_frontend/features/notifications/ui/widgets/notification_tile.dart';
 import 'package:marketplace_frontend/features/payments/ui/payments_page.dart';
+import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
 import 'package:marketplace_frontend/shared/widgets/app_notification_overlay.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
@@ -51,9 +52,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
     final unreadCount = ref.watch(unreadNotificationsCountProvider);
     final allCaughtUp =
         state.unreadOnly && state.items.isEmpty && !state.isLoading;
+    String t(String key) => AppStrings.of(context, key);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: Text(t('notificationsTitle')),
         actions: [
           if (unreadCount > 0)
             TextButton(
@@ -64,10 +66,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                   await ref.read(notificationsProvider.notifier).refresh();
                 } catch (_) {
                   if (!context.mounted) return;
-                  showAppNotification(context, 'Failed to mark all as read');
+                  showAppNotification(context, t('markAllReadFailed'));
                 }
               },
-              child: const Text('Mark all read'),
+              child: Text(t('markAllRead')),
             ),
         ],
       ),
@@ -78,7 +80,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
             child: Row(
               children: [
                 ChoiceChip(
-                  label: const Text('All'),
+                  label: Text(t('notificationsFilterAll')),
                   selected: !state.unreadOnly,
                   onSelected: (_) => ref
                       .read(notificationsProvider.notifier)
@@ -86,7 +88,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                 ),
                 const SizedBox(width: 8),
                 ChoiceChip(
-                  label: const Text('Unread'),
+                  label: Text(t('notificationsFilterUnread')),
                   selected: state.unreadOnly,
                   onSelected: (_) => ref
                       .read(notificationsProvider.notifier)
@@ -115,31 +117,31 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
                           child: TextButton(
                             onPressed: () =>
                                 ref.read(notificationsProvider.notifier).load(),
-                            child: const Text('Retry'),
+                            child: Text(t('retry')),
                           ),
                         ),
                       ],
                     )
                   : allCaughtUp
                   ? ListView(
-                      children: const [
-                        SizedBox(height: 140),
-                        Icon(
+                      children: [
+                        const SizedBox(height: 140),
+                        const Icon(
                           Icons.check_circle_outline,
                           size: 44,
                           color: Colors.green,
                         ),
-                        SizedBox(height: 12),
-                        Center(child: Text("You're all caught up!")),
+                        const SizedBox(height: 12),
+                        Center(child: Text(t('notificationsAllCaughtUp'))),
                       ],
                     )
                   : state.items.isEmpty
                   ? ListView(
-                      children: const [
-                        SizedBox(height: 140),
-                        Icon(Icons.notifications_none, size: 44),
-                        SizedBox(height: 12),
-                        Center(child: Text('No notifications yet')),
+                      children: [
+                        const SizedBox(height: 140),
+                        const Icon(Icons.notifications_none, size: 44),
+                        const SizedBox(height: 12),
+                        Center(child: Text(t('notificationsEmpty'))),
                       ],
                     )
                   : ListView.builder(
@@ -179,12 +181,31 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
       await unreadController.refresh();
     } catch (_) {
       if (!mounted) return;
-      showAppNotification(context, 'Failed to mark as read');
+      showAppNotification(
+        context,
+        AppStrings.of(context, 'markReadFailed'),
+      );
     }
-    if (!mounted || !notification.isActionable) return;
-    final entityType = notification.entityType!;
-    final entityId = notification.entityId!;
-    if (entityType == 'conversation') {
+    if (!mounted) return;
+    final entityId = notification.entityId;
+    if (entityId == null) return;
+
+    final et = (notification.entityType ?? '').toLowerCase();
+    final nt = notification.notificationType.toLowerCase();
+
+    if (et == 'listing' ||
+        nt == 'listing_favorited' ||
+        nt == 'contact_request') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ListingDetailPage(listingId: entityId),
+        ),
+      );
+      return;
+    }
+    if (et == 'conversation' ||
+        et == 'chat' ||
+        nt == 'new_message') {
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ConversationDetailPage(conversationId: entityId),
@@ -193,15 +214,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen>
       await unreadController.refresh();
       return;
     }
-    if (entityType == 'listing') {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ListingDetailPage(listingId: entityId),
-        ),
-      );
-      return;
-    }
-    if (entityType == 'payment' || entityType == 'promotion') {
+    if (et == 'payment' || et == 'promotion') {
       await Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => const PaymentsPage()));

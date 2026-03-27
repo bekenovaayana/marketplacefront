@@ -44,9 +44,6 @@ class _HomeTabState extends ConsumerState<HomeTab>
     String t(String key) => AppStrings.of(context, key);
     final state = ref.watch(homeControllerProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(t('home')),
-      ),
       body: RefreshIndicator(
         onRefresh: () => ref.read(homeControllerProvider.notifier).loadInitial(),
         child: ListView(

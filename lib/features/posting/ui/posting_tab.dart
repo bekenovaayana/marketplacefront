@@ -55,7 +55,6 @@ class _PostingTabState extends ConsumerState<PostingTab>
     final auth = ref.watch(authControllerProvider);
     if (!auth.isAuthenticated) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Post')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -84,7 +83,6 @@ class _PostingTabState extends ConsumerState<PostingTab>
     _syncControllers(state.payload);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Post')),
       body: Column(
         children: [
           Padding(

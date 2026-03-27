@@ -7,7 +7,6 @@ import 'package:marketplace_frontend/features/conversations/state/conversations_
 import 'package:marketplace_frontend/features/favorites/ui/favorites_page.dart';
 import 'package:marketplace_frontend/features/home/ui/home_tab.dart';
 import 'package:marketplace_frontend/features/notifications/state/unread_notifications_provider.dart';
-import 'package:marketplace_frontend/features/notifications/ui/notifications_screen.dart';
 import 'package:marketplace_frontend/features/posting/ui/posting_tab.dart';
 import 'package:marketplace_frontend/features/profile/ui/profile_tab.dart';
 import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
@@ -30,7 +29,6 @@ class _MainTabsPageState extends ConsumerState<MainTabsPage>
     FavoritesPage(),
     PostingTab(),
     ChatsTab(),
-    NotificationsScreen(),
     ProfileTab(),
   ];
 
@@ -68,6 +66,24 @@ class _MainTabsPageState extends ConsumerState<MainTabsPage>
     }
   }
 
+  String _mainTitle(BuildContext context) {
+    String t(String key) => AppStrings.of(context, key);
+    switch (_index) {
+      case 0:
+        return t('home');
+      case 1:
+        return t('favorites');
+      case 2:
+        return t('post');
+      case 3:
+        return t('chats');
+      case 4:
+        return 'Temshik';
+      default:
+        return t('home');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     String t(String key) => AppStrings.of(context, key);
@@ -75,6 +91,41 @@ class _MainTabsPageState extends ConsumerState<MainTabsPage>
     final unread = ref.watch(conversationsControllerProvider).totalUnread;
     final notificationsUnread = ref.watch(unreadNotificationsCountProvider);
     return Scaffold(
+      appBar: AppBar(
+        title: Text(_mainTitle(context)),
+        actions: [
+          IconButton(
+            tooltip: t('tooltipNotifications'),
+            onPressed: () async {
+              if (!auth.isAuthenticated) {
+                final from = Uri.encodeComponent('/notifications');
+                await context.push('/auth-gate?from=$from');
+                return;
+              }
+              await context.push('/notifications');
+              if (context.mounted) {
+                ref.read(unreadNotificationsCountProvider.notifier).refresh();
+              }
+            },
+            icon: notificationsUnread > 0
+                ? Badge(
+                    label: Text(
+                      notificationsUnread >= 100
+                          ? '99+'
+                          : notificationsUnread.toString(),
+                    ),
+                    backgroundColor: Colors.red,
+                    child: const Icon(Icons.notifications_outlined),
+                  )
+                : const Icon(Icons.notifications_outlined),
+          ),
+          IconButton(
+            tooltip: t('tooltipSettings'),
+            onPressed: () => context.push('/settings'),
+            icon: const Icon(Icons.settings),
+          ),
+        ],
+      ),
       body: IndexedStack(index: _index, children: _tabs),
       bottomNavigationBar: NavigationBar(
         height: 68,
@@ -92,9 +143,6 @@ class _MainTabsPageState extends ConsumerState<MainTabsPage>
             ref
                 .read(conversationsControllerProvider.notifier)
                 .refreshUnreadSummary();
-          }
-          if (value == 4) {
-            ref.read(unreadNotificationsCountProvider.notifier).refresh();
           }
         },
         destinations: [
@@ -118,20 +166,6 @@ class _MainTabsPageState extends ConsumerState<MainTabsPage>
                   )
                 : const Icon(Icons.chat_bubble_outline),
             label: t('chats'),
-          ),
-          NavigationDestination(
-            icon: notificationsUnread > 0
-                ? Badge(
-                    label: Text(
-                      notificationsUnread >= 100
-                          ? '99+'
-                          : notificationsUnread.toString(),
-                    ),
-                    backgroundColor: Colors.red,
-                    child: const Icon(Icons.notifications_outlined),
-                  )
-                : const Icon(Icons.notifications_outlined),
-            label: 'Alerts',
           ),
           NavigationDestination(
             icon: const Icon(Icons.person_outline),

@@ -54,4 +54,61 @@ class AppTheme {
       useMaterial3: true,
     );
   }
+
+  static ThemeData get dark {
+    const seed = Color(0xFF1BB35E);
+    return ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: seed,
+        brightness: Brightness.dark,
+      ),
+      scaffoldBackgroundColor: const Color(0xFF121316),
+      appBarTheme: const AppBarTheme(
+        centerTitle: false,
+        surfaceTintColor: Colors.transparent,
+        backgroundColor: Color(0xFF121316),
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0.4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        color: const Color(0xFF1C1F26),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF242832),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFF1C1F26),
+        indicatorColor: const Color(0x331BB35E),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => TextStyle(
+            fontSize: 12,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w700
+                : FontWeight.w500,
+            color: states.contains(WidgetState.selected)
+                ? const Color(0xFF4CD88A)
+                : const Color(0xFF9AA0B4),
+          ),
+        ),
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            color: states.contains(WidgetState.selected)
+                ? const Color(0xFF4CD88A)
+                : const Color(0xFF9AA0B4),
+          ),
+        ),
+      ),
+      useMaterial3: true,
+    );
+  }
 }

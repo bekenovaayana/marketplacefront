@@ -30,7 +30,6 @@ class _FavoritesPageState extends ConsumerState<FavoritesPage>
     final auth = ref.watch(authControllerProvider);
     if (!auth.isAuthenticated) {
       return Scaffold(
-        appBar: AppBar(title: Text(t('favorites'))),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -62,7 +61,6 @@ class _FavoritesPageState extends ConsumerState<FavoritesPage>
     }
     final state = ref.watch(favoritesControllerProvider);
     return Scaffold(
-      appBar: AppBar(title: Text(t('favorites'))),
       body: RefreshIndicator(
         onRefresh: () {
           if (!auth.isAuthenticated) return Future.value();

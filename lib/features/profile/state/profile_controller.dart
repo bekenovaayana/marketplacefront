@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:marketplace_frontend/core/errors/api_exception.dart';
 import 'package:marketplace_frontend/features/profile/data/profile_repository.dart';
 import 'package:marketplace_frontend/features/profile/data/profile_models.dart';
 
@@ -89,6 +90,33 @@ class ProfileController extends StateNotifier<ProfileState> {
     }
   }
 
+  Future<bool> patchMe(UpdateUserMeRequest request) async {
+    state = state.copyWith(
+      isSaving: true,
+      clearError: true,
+      clearMessage: true,
+      clearFieldErrors: true,
+    );
+    try {
+      final updated = await _repository.updateMe(request);
+      state = state.copyWith(
+        isSaving: false,
+        profile: updated,
+      );
+      return true;
+    } on ProfileValidationException catch (e) {
+      state = state.copyWith(
+        isSaving: false,
+        error: e.message,
+        fieldErrors: e.fieldErrors,
+      );
+      return false;
+    } catch (e) {
+      state = state.copyWith(isSaving: false, error: e.toString());
+      return false;
+    }
+  }
+
   Future<void> save({required UpdateUserMeRequest request}) async {
     state = state.copyWith(
       isSaving: true,
@@ -135,6 +163,10 @@ class ProfileController extends StateNotifier<ProfileState> {
           city: current.city,
           preferredLanguage: current.preferredLanguage,
           phone: current.phone,
+          theme: current.theme,
+          notifyNewMessage: current.notifyNewMessage,
+          notifyContactRequest: current.notifyContactRequest,
+          notifyListingFavorited: current.notifyListingFavorited,
           avatarUrl: avatar.avatarUrl,
           status: current.status,
           emailVerified: current.emailVerified,
@@ -177,6 +209,11 @@ class ProfileController extends StateNotifier<ProfileState> {
       state = state.copyWith(
         isChangingPassword: false,
         message: 'Password updated successfully',
+      );
+    } on ApiException catch (e) {
+      state = state.copyWith(
+        isChangingPassword: false,
+        error: e.message,
       );
     } catch (e) {
       state = state.copyWith(isChangingPassword: false, error: e.toString());
