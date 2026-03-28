@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:marketplace_frontend/core/errors/api_exception.dart';
+import 'package:marketplace_frontend/core/errors/api_field_errors.dart';
 import 'package:marketplace_frontend/features/home/models/home_models.dart';
 import 'package:marketplace_frontend/features/posting/data/posting_local_store.dart';
 import 'package:marketplace_frontend/features/posting/data/posting_models.dart';
@@ -95,7 +96,15 @@ class PostingController extends StateNotifier<PostingState> {
   final PostingLocalStore _localStore;
   Timer? _autosaveDebounce;
 
-  static const _allowedMime = {'image/jpeg', 'image/jpg', 'image/png', 'image/webp'};
+  static const _allowedMime = {
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+    'video/mp4',
+    'video/webm',
+    'video/quicktime',
+  };
   static const _maxSize = 67108864;
   static const _maxImages = 10;
 
@@ -150,6 +159,11 @@ class PostingController extends StateNotifier<PostingState> {
         currentStep: 0,
         clearError: true,
       );
+    } on ApiFieldErrorsException catch (e) {
+      _applyFieldErrors(
+        e,
+        isLoading: false,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -160,6 +174,11 @@ class PostingController extends StateNotifier<PostingState> {
     try {
       final items = await _repository.myListings(status: status);
       state = state.copyWith(isLoading: false, myListings: items);
+    } on ApiFieldErrorsException catch (e) {
+      _applyFieldErrors(
+        e,
+        isLoading: false,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -181,6 +200,7 @@ class PostingController extends StateNotifier<PostingState> {
         title: title,
         description: description,
       ),
+      fieldErrors: const {},
       clearError: true,
     );
     _scheduleAutosave();
@@ -194,11 +214,12 @@ class PostingController extends StateNotifier<PostingState> {
   }) {
     state = state.copyWith(
       payload: state.payload.copyWith(
-        price: priceText != null ? double.tryParse(priceText) : state.payload.price,
+        price: priceText != null ? _parsePriceInput(priceText) : state.payload.price,
         city: city,
         latitude: latText != null ? double.tryParse(latText) : state.payload.latitude,
         longitude: lngText != null ? double.tryParse(lngText) : state.payload.longitude,
       ),
+      fieldErrors: const {},
       clearError: true,
     );
     _scheduleAutosave();
@@ -206,7 +227,8 @@ class PostingController extends StateNotifier<PostingState> {
 
   void patchContact({String? phone}) {
     state = state.copyWith(
-      payload: state.payload.copyWith(contactPhone: phone),
+      payload: state.payload.copyWith(contactPhone: _normalizeKgPhone(phone)),
+      fieldErrors: const {},
       clearError: true,
     );
     _scheduleAutosave();
@@ -214,7 +236,7 @@ class PostingController extends StateNotifier<PostingState> {
 
   Future<void> addPhotos(List<XFile> files) async {
     if (state.payload.images.length + files.length > _maxImages) {
-      state = state.copyWith(error: 'Maximum 10 photos allowed');
+      state = state.copyWith(error: 'Maximum 10 media files allowed');
       return;
     }
     for (final file in files) {
@@ -225,7 +247,21 @@ class PostingController extends StateNotifier<PostingState> {
         return;
       }
       if (!_allowedMime.contains(mime)) {
-        state = state.copyWith(error: 'Only jpg, png, and webp are supported');
+        final ext = file.name.toLowerCase();
+        final isKnownExt = ext.endsWith('.jpg') ||
+            ext.endsWith('.jpeg') ||
+            ext.endsWith('.png') ||
+            ext.endsWith('.webp') ||
+            ext.endsWith('.mp4') ||
+            ext.endsWith('.webm') ||
+            ext.endsWith('.mov');
+        if (!isKnownExt) {
+          state = state.copyWith(error: 'Only jpg, png, webp, mp4, webm and mov are supported');
+          return;
+        }
+      }
+      if (!_allowedMime.contains(mime) && (file.mimeType ?? '').isNotEmpty) {
+        state = state.copyWith(error: 'Only jpg, png, webp, mp4, webm and mov are supported');
         return;
       }
     }
@@ -234,18 +270,33 @@ class PostingController extends StateNotifier<PostingState> {
     try {
       final uploaded = <PostingImage>[...state.payload.images];
       for (final file in files) {
-        final image = await _repository.uploadImage(file);
-        uploaded.add(
-          PostingImage(url: image.url, sortOrder: uploaded.length),
-        );
+        await _ensureDraftId();
+        final dynamic repo = _repository;
+        PostingImage media;
+        try {
+          media = await repo.uploadListingMedia(
+            listingId: state.draftId!,
+            file: file,
+          ) as PostingImage;
+        } catch (_) {
+          media = await _repository.uploadImage(file);
+        }
+        uploaded.add(PostingImage(
+          url: media.url,
+          sortOrder: uploaded.length,
+        ));
       }
-      await _ensureDraftId();
       final normalized = _normalizeSort(uploaded);
       state = state.copyWith(
         isSavingDraft: false,
         payload: state.payload.copyWith(images: normalized),
       );
       await _repository.updateDraft(state.draftId!, state.payload.copyWith(images: normalized));
+    } on ApiFieldErrorsException catch (e) {
+      _applyFieldErrors(
+        e,
+        isSavingDraft: false,
+      );
     } on ApiException catch (e) {
       state = state.copyWith(isSavingDraft: false, error: e.message);
     } catch (e) {
@@ -296,6 +347,8 @@ class PostingController extends StateNotifier<PostingState> {
       await _repository.updateDraft(state.draftId!, state.payload);
       final data = await _repository.preview(state.draftId!);
       state = state.copyWith(preview: data, clearError: true);
+    } on ApiFieldErrorsException catch (e) {
+      _applyFieldErrors(e);
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
@@ -332,6 +385,12 @@ class PostingController extends StateNotifier<PostingState> {
         fieldErrors: errors,
       );
       return false;
+    } on ApiFieldErrorsException catch (e) {
+      _applyFieldErrors(
+        e,
+        isPublishing: false,
+      );
+      return false;
     } on ApiException catch (e) {
       state = state.copyWith(isPublishing: false, error: e.message);
       return false;
@@ -345,6 +404,24 @@ class PostingController extends StateNotifier<PostingState> {
     try {
       await _repository.unpublish(id);
       await loadMyListings(status: state.myStatus);
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+
+  Future<void> deleteMyListing(int id) async {
+    try {
+      final dynamic repo = _repository;
+      try {
+        await repo.deleteListing(id);
+      } catch (_) {
+        await _repository.unpublish(id);
+      }
+      await loadMyListings(status: state.myStatus);
+    } on ApiFieldErrorsException catch (e) {
+      _applyFieldErrors(e);
+    } on ApiException catch (e) {
+      state = state.copyWith(error: e.message);
     } catch (e) {
       state = state.copyWith(error: e.toString());
     }
@@ -373,12 +450,12 @@ class PostingController extends StateNotifier<PostingState> {
           categoryId: (json['category_id'] as num?)?.toInt(),
           title: json['title'] as String?,
           description: json['description'] as String?,
-          price: (json['price'] as num?)?.toDouble(),
+          price: _toInt(json['price']),
           currency: (json['currency'] as String?) ?? 'USD',
           city: json['city'] as String?,
           contactPhone: json['contact_phone'] as String?,
-          latitude: (json['latitude'] as num?)?.toDouble(),
-          longitude: (json['longitude'] as num?)?.toDouble(),
+          latitude: _toDouble(json['latitude']),
+          longitude: _toDouble(json['longitude']),
           images: images,
         ),
       );
@@ -398,14 +475,24 @@ class PostingController extends StateNotifier<PostingState> {
       await _ensureDraftId();
       await _repository.updateDraft(state.draftId!, state.payload);
       state = state.copyWith(isSavingDraft: false);
+    } on ApiFieldErrorsException catch (e) {
+      _applyFieldErrors(
+        e,
+        isSavingDraft: false,
+      );
     } catch (e) {
       state = state.copyWith(isSavingDraft: false, error: e.toString());
     }
   }
 
   Future<void> _ensureDraftId() async {
-    if (state.draftId != null) return;
+    if (state.draftId != null && state.draftId! > 0) return;
     final id = await _repository.createDraft(state.payload);
+    if (id <= 0) {
+      throw const ApiException(
+        'Could not create listing draft. Check connection and try again.',
+      );
+    }
     await _localStore.saveDraftId(id);
     state = state.copyWith(draftId: id);
   }
@@ -422,6 +509,80 @@ class PostingController extends StateNotifier<PostingState> {
       clearDraftId: true,
       payload: const PostingDraftPayload(),
       fieldErrors: {},
+    );
+  }
+
+  static int? _parsePriceInput(String raw) {
+    final normalized = raw.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    final asInt = int.tryParse(normalized);
+    if (asInt != null) return asInt;
+    final asDouble = double.tryParse(normalized);
+    if (asDouble == null) return null;
+    if (asDouble != asDouble.toInt().toDouble()) return null;
+    return asDouble.toInt();
+  }
+
+  static int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) {
+      if (value != value.toInt()) return null;
+      return value.toInt();
+    }
+    if (value is String) {
+      final normalized = value.trim().replaceAll(',', '.');
+      if (normalized.isEmpty) return null;
+      final asInt = int.tryParse(normalized);
+      if (asInt != null) return asInt;
+      final asDouble = double.tryParse(normalized);
+      if (asDouble == null) return null;
+      if (asDouble != asDouble.toInt().toDouble()) return null;
+      return asDouble.toInt();
+    }
+    return null;
+  }
+
+  static double? _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final normalized = value.trim().replaceAll(',', '.');
+      if (normalized.isEmpty) return null;
+      return double.tryParse(normalized);
+    }
+    return null;
+  }
+
+  static String? _normalizeKgPhone(String? phone) {
+    if (phone == null) return null;
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return null;
+    if (digits.startsWith('996')) {
+      final rest = digits.substring(3);
+      return '+996$rest';
+    }
+    if (digits.length <= 9) {
+      return '+996$digits';
+    }
+    return '+$digits';
+  }
+
+  void _applyFieldErrors(
+    ApiFieldErrorsException e, {
+    bool? isLoading,
+    bool? isSavingDraft,
+    bool? isPublishing,
+  }) {
+    final fallback = e.fieldErrors.values.isNotEmpty
+        ? e.fieldErrors.values.first
+        : 'Validation failed. Please check the entered data.';
+    state = state.copyWith(
+      isLoading: isLoading ?? state.isLoading,
+      isSavingDraft: isSavingDraft ?? state.isSavingDraft,
+      isPublishing: isPublishing ?? state.isPublishing,
+      fieldErrors: e.fieldErrors,
+      error: (e.rawMessage != null && e.rawMessage!.trim().isNotEmpty)
+          ? e.rawMessage!.trim()
+          : fallback,
     );
   }
 

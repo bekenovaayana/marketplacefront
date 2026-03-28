@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_state.dart';
+import 'package:marketplace_frontend/features/posting/ui/location_pick_result.dart';
+import 'package:marketplace_frontend/features/posting/ui/location_picker_screen.dart';
 import 'package:marketplace_frontend/features/posting/state/posting_controller.dart';
 import 'package:marketplace_frontend/features/posting/data/posting_models.dart';
 import 'package:marketplace_frontend/features/posting/ui/widgets/create_flow_view.dart';
+import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
 import 'package:marketplace_frontend/shared/widgets/app_notification_overlay.dart';
 
 class PostingTab extends ConsumerStatefulWidget {
@@ -26,7 +30,6 @@ class _PostingTabState extends ConsumerState<PostingTab>
   final _lat = TextEditingController();
   final _lng = TextEditingController();
   final _phone = TextEditingController();
-  final _picker = ImagePicker();
   int _modeIndex = 0;
 
   @override
@@ -64,6 +67,9 @@ class _PostingTabState extends ConsumerState<PostingTab>
   Widget build(BuildContext context) {
     super.build(context);
     final auth = ref.watch(authControllerProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final panel = isDark ? const Color(0xFF172335) : Colors.white;
+    const accent = Color(0xFF23B554);
     ref.listen<AuthState>(authControllerProvider, (prev, next) {
       if (!next.initialized) return;
       if (next.isAuthenticated && prev?.isAuthenticated != true) {
@@ -71,46 +77,66 @@ class _PostingTabState extends ConsumerState<PostingTab>
       }
     });
     if (!auth.isAuthenticated) {
+      String t(String key) => AppStrings.of(context, key);
       return Scaffold(
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.add_box_outlined, size: 56),
-                const SizedBox(height: 10),
-                const Text('Sign in to create or manage listings'),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () {
-                    final from = Uri.encodeComponent('/app?tab=2');
-                    context.push('/auth-gate?from=$from');
-                  },
-                  child: const Text('Sign in / Create account'),
+            child: Card(
+              color: panel,
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_box_outlined, size: 56, color: accent),
+                    const SizedBox(height: 10),
+                    Text(t('signInToCreateListings')),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: () {
+                        final from = Uri.encodeComponent('/app?tab=2');
+                        context.push('/auth-gate?from=$from');
+                      },
+                      child: Text(t('signInOrCreateAccount')),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
       );
     }
+
+    ref.listen<PostingState>(postingControllerProvider, (prev, next) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncControllers(next.payload);
+      });
+    });
+
     final state = ref.watch(postingControllerProvider);
     final c = ref.read(postingControllerProvider.notifier);
-    _syncControllers(state.payload);
+    String t(String key) => AppStrings.of(context, key);
 
     return Scaffold(
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Text('Create')),
-                ButtonSegment(value: 1, label: Text('My listings')),
-              ],
-              selected: {_modeIndex},
-              onSelectionChanged: (v) => setState(() => _modeIndex = v.first),
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: Theme.of(context).colorScheme.copyWith(primary: accent),
+              ),
+              child: SegmentedButton<int>(
+                segments: [
+                  ButtonSegment(value: 0, label: Text(t('postingTabCreate'))),
+                  ButtonSegment(value: 1, label: Text(t('postingTabMyListings'))),
+                ],
+                selected: {_modeIndex},
+                onSelectionChanged: (v) => setState(() => _modeIndex = v.first),
+              ),
             ),
           ),
           if (state.isSavingDraft) const LinearProgressIndicator(minHeight: 2),
@@ -129,6 +155,7 @@ class _PostingTabState extends ConsumerState<PostingTab>
                     onFieldChanged: () => _onFieldChanged(c),
                     onPickPhotos: () => _pickPhotos(c),
                     onUseCurrentLocation: () => _useLocation(c),
+                    onPickLocationOnMap: () => _pickLocationOnMap(c),
                     onRemovePhoto: (index) => c.removePhoto(index),
                     onReorderPhoto: (o, n) => c.reorderPhotos(o, n),
                     onLoadPreview: c.loadPreview,
@@ -139,6 +166,7 @@ class _PostingTabState extends ConsumerState<PostingTab>
                         c.setStep((state.currentStep - 1).clamp(0, 3)),
                   )
                 : _MyListingsView(
+                    t: t,
                     state: state,
                     onStatus: (status) => c.loadMyListings(status: status),
                     onResumeDraft: (id) async {
@@ -183,17 +211,29 @@ class _PostingTabState extends ConsumerState<PostingTab>
   }
 
   Future<void> _pickPhotos(PostingController c) async {
-    final files = await _picker.pickMultiImage();
-    if (files.isNotEmpty) {
-      await c.addPhotos(files);
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'webm', 'mov'],
+    );
+    if (picked != null) {
+      final files = picked.files
+          .where((f) => (f.path ?? '').isNotEmpty)
+          .map((f) => XFile(f.path!))
+          .toList();
+      if (files.isNotEmpty) {
+        await c.addPhotos(files);
+      }
     }
   }
 
   Future<void> _useLocation(PostingController c) async {
+    final disabledMsg = AppStrings.of(context, 'locationServiceDisabled');
+    final deniedMsg = AppStrings.of(context, 'locationPermissionDenied');
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
       if (!mounted) return;
-      showAppNotification(context, 'Location service is disabled');
+      showAppNotification(context, disabledMsg);
       return;
     }
     var permission = await Geolocator.checkPermission();
@@ -203,16 +243,41 @@ class _PostingTabState extends ConsumerState<PostingTab>
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
       if (!mounted) return;
-      showAppNotification(context, 'Location permission denied');
+      showAppNotification(context, deniedMsg);
       return;
     }
     final pos = await Geolocator.getCurrentPosition();
     await c.setCurrentLocation(lat: pos.latitude, lng: pos.longitude);
   }
+
+  Future<void> _pickLocationOnMap(PostingController c) async {
+    final lat = double.tryParse(_lat.text.trim());
+    final lng = double.tryParse(_lng.text.trim());
+    final result = await Navigator.push<LocationPickResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialCity: _city.text.trim().isEmpty ? null : _city.text.trim(),
+          initialLat: lat,
+          initialLng: lng,
+        ),
+      ),
+    );
+    if (result == null) return;
+    _city.text = result.city;
+    _lat.text = result.latitude.toString();
+    _lng.text = result.longitude.toString();
+    c.patchPriceLocation(
+      city: result.city,
+      latText: _lat.text,
+      lngText: _lng.text,
+    );
+  }
 }
 
 class _MyListingsView extends StatelessWidget {
   const _MyListingsView({
+    required this.t,
     required this.state,
     required this.onStatus,
     required this.onResumeDraft,
@@ -220,6 +285,7 @@ class _MyListingsView extends StatelessWidget {
     required this.onRepublish,
   });
 
+  final String Function(String key) t;
   final PostingState state;
   final ValueChanged<String> onStatus;
   final ValueChanged<int> onResumeDraft;
@@ -229,6 +295,21 @@ class _MyListingsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const statuses = ['draft', 'active', 'inactive', 'sold'];
+    String statusLabel(String status) {
+      switch (status) {
+        case 'draft':
+          return t('listingStatusDraft');
+        case 'active':
+          return t('listingStatusActive');
+        case 'inactive':
+          return t('listingStatusInactive');
+        case 'sold':
+          return t('listingStatusSold');
+        default:
+          return status;
+      }
+    }
+
     return Column(
       children: [
         SingleChildScrollView(
@@ -240,7 +321,7 @@ class _MyListingsView extends StatelessWidget {
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
-                  label: Text(status),
+                  label: Text(statusLabel(status)),
                   selected: selected,
                   onSelected: (_) => onStatus(status),
                 ),
@@ -273,17 +354,17 @@ class _MyListingsView extends StatelessWidget {
                           if (item.status == 'draft')
                             TextButton(
                               onPressed: () => onResumeDraft(item.id),
-                              child: const Text('Resume'),
+                              child: Text(t('resumeListing')),
                             ),
                           if (item.status == 'active')
                             TextButton(
                               onPressed: () => onUnpublish(item.id),
-                              child: const Text('Unpublish'),
+                              child: Text(t('unpublishListing')),
                             ),
                           if (item.status == 'inactive')
                             TextButton(
                               onPressed: () => onRepublish(item.id),
-                              child: const Text('Republish'),
+                              child: Text(t('republishListing')),
                             ),
                         ],
                       ),

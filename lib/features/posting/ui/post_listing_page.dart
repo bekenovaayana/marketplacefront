@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/features/posting/data/posting_models.dart';
+import 'package:marketplace_frontend/features/posting/ui/location_pick_result.dart';
+import 'package:marketplace_frontend/features/posting/ui/location_picker_screen.dart';
 import 'package:marketplace_frontend/features/posting/state/posting_controller.dart';
 import 'package:marketplace_frontend/features/posting/ui/widgets/create_flow_view.dart';
 import 'package:marketplace_frontend/features/profile/state/my_active_listings_controller.dart';
@@ -27,7 +30,6 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
   final _lat = TextEditingController();
   final _lng = TextEditingController();
   final _phone = TextEditingController();
-  final _picker = ImagePicker();
 
   @override
   void initState() {
@@ -60,7 +62,7 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
     if (!mounted) return;
     final err = ref.read(postingControllerProvider).error;
     if (err != null) return;
-    final catId = ref.read(postingControllerProvider).payload.categoryId;
+    final catId = ref.read(postingControllerProvider).payload.categoryId?.toInt();
     ref.read(profileListingsNavIntentProvider.notifier).setIntent(
           ProfileListingsNavIntent(
             tab: ProfileListingsTab.draft,
@@ -72,7 +74,7 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
   }
 
   Future<bool> _onPublish(PostingController c) async {
-    final catId = ref.read(postingControllerProvider).payload.categoryId;
+    final catId = ref.read(postingControllerProvider).payload.categoryId?.toInt();
     final ok = await c.publish();
     if (!mounted) return ok;
     if (ok) {
@@ -114,9 +116,19 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
   }
 
   Future<void> _pickPhotos(PostingController c) async {
-    final files = await _picker.pickMultiImage();
-    if (files.isNotEmpty) {
-      await c.addPhotos(files);
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'webm', 'mov'],
+    );
+    if (picked != null) {
+      final files = picked.files
+          .where((f) => (f.path ?? '').isNotEmpty)
+          .map((f) => XFile(f.path!))
+          .toList();
+      if (files.isNotEmpty) {
+        await c.addPhotos(files);
+      }
     }
   }
 
@@ -141,6 +153,30 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
     await c.setCurrentLocation(lat: pos.latitude, lng: pos.longitude);
   }
 
+  Future<void> _pickLocationOnMap(PostingController c) async {
+    final lat = double.tryParse(_lat.text.trim());
+    final lng = double.tryParse(_lng.text.trim());
+    final result = await Navigator.push<LocationPickResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialCity: _city.text.trim().isEmpty ? null : _city.text.trim(),
+          initialLat: lat,
+          initialLng: lng,
+        ),
+      ),
+    );
+    if (result == null) return;
+    _city.text = result.city;
+    _lat.text = result.latitude.toString();
+    _lng.text = result.longitude.toString();
+    c.patchPriceLocation(
+      city: result.city,
+      latText: _lat.text,
+      lngText: _lng.text,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider);
@@ -151,9 +187,15 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    ref.listen<PostingState>(postingControllerProvider, (prev, next) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncControllers(next.payload);
+      });
+    });
+
     final state = ref.watch(postingControllerProvider);
     final c = ref.read(postingControllerProvider.notifier);
-    _syncControllers(state.payload);
 
     final saveLabel = AppStrings.of(context, 'profileSaveDraft');
 
@@ -192,6 +234,7 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
                     onFieldChanged: () => _onFieldChanged(c),
                     onPickPhotos: () => _pickPhotos(c),
                     onUseCurrentLocation: () => _useLocation(c),
+                    onPickLocationOnMap: () => _pickLocationOnMap(c),
                     onRemovePhoto: (index) => c.removePhoto(index),
                     onReorderPhoto: (o, n) => c.reorderPhotos(o, n),
                     onLoadPreview: c.loadPreview,

@@ -2,7 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mime/mime.dart';
 import 'package:marketplace_frontend/core/errors/api_exception.dart';
+import 'package:marketplace_frontend/core/errors/api_field_errors.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
 import 'package:marketplace_frontend/features/home/models/home_models.dart';
 import 'package:marketplace_frontend/features/posting/data/posting_models.dart';
@@ -31,12 +33,53 @@ class PostingRepository {
   }
 
   Future<int> createDraft(PostingDraftPayload payload) async {
-    final response = await _dio.post('/listings/drafts', data: payload.toJson());
-    return (response.data['id'] as num?)?.toInt() ?? 0;
+    Response<dynamic> response;
+    try {
+      response = await _dio.post('/listings', data: payload.toJson());
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      final shouldFallbackToDrafts =
+          code == 404 ||
+          code == 405 ||
+          // Some older backends validate POST /listings strictly and return 422.
+          // Fallback to draft endpoint keeps creation flow working.
+          code == 422;
+      if (shouldFallbackToDrafts) {
+        try {
+          response = await _dio.post('/listings/drafts', data: payload.toJson());
+        } on DioException catch (e2) {
+          throw _mapDio(e2, fallbackMessage: 'Draft creation failed');
+        }
+      } else {
+        throw _mapDio(e, fallbackMessage: 'Draft creation failed');
+      }
+    }
+    final data = response.data;
+    if (data is Map<String, dynamic>) {
+      final id = data['id'];
+      if (id is num) return id.toInt();
+      final listing = data['listing'];
+      if (listing is Map<String, dynamic> && listing['id'] is num) {
+        return (listing['id'] as num).toInt();
+      }
+    }
+    throw const ApiException('Invalid draft response from server');
   }
 
   Future<void> updateDraft(int draftId, PostingDraftPayload payload) async {
-    await _dio.put('/listings/drafts/$draftId', data: payload.toJson());
+    try {
+      await _dio.patch('/listings/$draftId', data: payload.toJson());
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404 || e.response?.statusCode == 405) {
+        try {
+          await _dio.put('/listings/drafts/$draftId', data: payload.toJson());
+        } on DioException catch (e2) {
+          throw _mapDio(e2, fallbackMessage: 'Draft update failed');
+        }
+        return;
+      }
+      throw _mapDio(e, fallbackMessage: 'Draft update failed');
+    }
   }
 
   Future<void> reorderImages(int listingId, List<PostingImage> images) async {
@@ -48,19 +91,27 @@ class PostingRepository {
       );
     } on DioException catch (e) {
       if (e.response?.statusCode == 422 || e.response?.statusCode == 400) {
-        await _dio.put(
-          '/listings/$listingId/images/reorder',
-          data: payload,
-        );
+        try {
+          await _dio.put(
+            '/listings/$listingId/images/reorder',
+            data: payload,
+          );
+        } on DioException catch (e2) {
+          throw _mapDio(e2, fallbackMessage: 'Failed to reorder images');
+        }
         return;
       }
-      rethrow;
+      throw _mapDio(e, fallbackMessage: 'Failed to reorder images');
     }
   }
 
   Future<Map<String, dynamic>> preview(int listingId) async {
-    final response = await _dio.get('/listings/$listingId/preview');
-    return response.data as Map<String, dynamic>;
+    try {
+      final response = await _dio.get('/listings/$listingId/preview');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _mapDio(e, fallbackMessage: 'Failed to load preview');
+    }
   }
 
   Future<void> publish(int listingId) async {
@@ -69,6 +120,10 @@ class PostingRepository {
     } on DioException catch (e) {
       if (e.response?.statusCode == 422) {
         final data = e.response?.data;
+        final fe = tryApiFieldErrorsFromResponse(data);
+        if (fe != null) {
+          throw fe;
+        }
         if (data is Map<String, dynamic> && data['detail'] is Map<String, dynamic>) {
           final detail = data['detail'] as Map<String, dynamic>;
           final missing = (detail['missing_fields'] as List<dynamic>? ?? [])
@@ -80,31 +135,46 @@ class PostingRepository {
           );
         }
       }
-      throw ApiException('Publish failed', statusCode: e.response?.statusCode);
+      throw _mapDio(e, fallbackMessage: 'Publish failed');
     }
   }
 
   Future<void> unpublish(int listingId) async {
-    await _dio.post('/listings/$listingId/unpublish');
+    try {
+      await _dio.post('/listings/$listingId/unpublish');
+    } on DioException catch (e) {
+      throw _mapDio(e, fallbackMessage: 'Unpublish failed');
+    }
   }
 
   Future<List<ListingMine>> myListings({
-    required String status,
+    String? status,
     int? categoryId,
     String sort = 'newest',
     int page = 1,
     int pageSize = 20,
   }) async {
     final params = <String, dynamic>{
-      'status': status,
       'page': page,
       'page_size': pageSize,
       'sort': sort,
     };
+    if (status != null && status.isNotEmpty) {
+      params['status'] = status;
+    }
     if (categoryId != null) {
       params['category_id'] = categoryId;
     }
-    final response = await _dio.get('/listings/me', queryParameters: params);
+    Response<dynamic> response;
+    try {
+      // Use canonical /listings/me endpoint directly.
+      // Previously the code tried /listings/my first, but that path matches
+      // /{listing_id} with a non-integer value and FastAPI returns 422 instead
+      // of 404, so the fallback was never triggered.
+      response = await _dio.get('/listings/me', queryParameters: params);
+    } on DioException catch (e) {
+      throw _mapDio(e, fallbackMessage: 'Failed to load my listings');
+    }
     final data = response.data;
     final items = data is List<dynamic>
         ? data
@@ -116,18 +186,22 @@ class PostingRepository {
     try {
       final preview = await _dio.get('/listings/$id/preview');
       return preview.data as Map<String, dynamic>;
-    } catch (_) {
-      final response = await _dio.get('/listings/$id');
-      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      try {
+        final response = await _dio.get('/listings/$id');
+        return response.data as Map<String, dynamic>;
+      } on DioException {
+        throw _mapDio(e, fallbackMessage: 'Failed to load listing');
+      }
     }
   }
 
   Future<PostingImage> uploadImage(XFile file) async {
-    final bytes = await file.readAsBytes();
-    final multipart = MultipartFile.fromBytes(
-      bytes,
+    final mimeType = _effectiveMimeType(file);
+    final multipart = await MultipartFile.fromFile(
+      file.path,
       filename: file.name,
-      contentType: _resolveContentType(file.mimeType),
+      contentType: _resolveContentType(mimeType),
     );
     try {
       final response = await _dio.post(
@@ -141,6 +215,8 @@ class PostingRepository {
       );
     } on DioException catch (e) {
       final code = e.response?.statusCode;
+      final fe = tryApiFieldErrorsFromResponse(e.response?.data);
+      if (fe != null) throw fe;
       if (code == 413) {
         throw const ApiException('Image is too large. Max size is 64MB.', statusCode: 413);
       }
@@ -150,7 +226,63 @@ class PostingRepository {
           statusCode: 415,
         );
       }
-      throw ApiException('Upload failed', statusCode: code);
+      throw _mapDio(e, fallbackMessage: 'Upload failed');
+    }
+  }
+
+  Future<PostingImage> uploadListingMedia({
+    required int listingId,
+    required XFile file,
+  }) async {
+    final mimeType = _effectiveMimeType(file);
+    final multipart = await MultipartFile.fromFile(
+      file.path,
+      filename: file.name,
+      contentType: _resolveContentType(mimeType),
+    );
+    try {
+      final response = await _dio.post(
+        '/listing-media',
+        data: FormData.fromMap({
+          'listing_id': listingId.toString(),
+          'file': multipart,
+        }),
+        options: Options(contentType: 'multipart/form-data'),
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        return PostingImage(
+          url: (data['url'] as String?) ?? '',
+          sortOrder: (data['sort_order'] as num?)?.toInt() ?? 0,
+        );
+      }
+      throw const ApiException('Upload response missing url');
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      final fe = tryApiFieldErrorsFromResponse(e.response?.data);
+      if (fe != null) throw fe;
+      if (code == 413) {
+        throw const ApiException('File is too large.', statusCode: 413);
+      }
+      if (code == 415) {
+        throw const ApiException(
+          'Unsupported format. Use jpg, png, webp, mp4, webm, or mov.',
+          statusCode: 415,
+        );
+      }
+      final payload = e.response?.data;
+      if (payload is Map<String, dynamic> && payload['detail'] is String) {
+        throw ApiException(payload['detail'] as String, statusCode: code);
+      }
+      throw _mapDio(e, fallbackMessage: 'Upload failed');
+    }
+  }
+
+  Future<void> deleteListing(int id) async {
+    try {
+      await _dio.delete<void>('/listings/$id');
+    } on DioException catch (e) {
+      throw _mapDio(e, fallbackMessage: 'Delete failed');
     }
   }
 
@@ -165,6 +297,42 @@ class PostingRepository {
     if (mime == 'image/webp') {
       return MediaType('image', 'webp');
     }
+    if (mime == 'video/mp4') {
+      return MediaType('video', 'mp4');
+    }
+    if (mime == 'video/webm') {
+      return MediaType('video', 'webm');
+    }
+    if (mime == 'video/quicktime') {
+      return MediaType('video', 'quicktime');
+    }
     return MediaType('application', 'octet-stream');
+  }
+
+  String? _effectiveMimeType(XFile file) {
+    final direct = (file.mimeType ?? '').trim().toLowerCase();
+    if (direct.isNotEmpty) return direct;
+    final guessed = (lookupMimeType(file.path) ?? '').trim().toLowerCase();
+    if (guessed.isNotEmpty) return guessed;
+    return null;
+  }
+
+  Object _mapDio(
+    DioException e, {
+    required String fallbackMessage,
+  }) {
+    final status = e.response?.statusCode;
+    final data = e.response?.data;
+    if (status == 422) {
+      final fe = tryApiFieldErrorsFromResponse(data);
+      if (fe != null) return fe;
+    }
+    if (data is Map<String, dynamic>) {
+      final detail = parseApiDetailString(data);
+      if (detail != null && detail.isNotEmpty) {
+        return ApiException(detail, statusCode: status);
+      }
+    }
+    return ApiException(e.message ?? fallbackMessage, statusCode: status);
   }
 }

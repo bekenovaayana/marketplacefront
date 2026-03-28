@@ -27,10 +27,10 @@ class PostingDraftPayload {
     this.images = const [],
   });
 
-  final int? categoryId;
+  final num? categoryId;
   final String? title;
   final String? description;
-  final double? price;
+  final num? price;
   final String currency;
   final String? city;
   final String? contactPhone;
@@ -54,10 +54,10 @@ class PostingDraftPayload {
   }
 
   PostingDraftPayload copyWith({
-    int? categoryId,
+    num? categoryId,
     String? title,
     String? description,
-    double? price,
+    num? price,
     String? currency,
     String? city,
     String? contactPhone,
@@ -90,6 +90,8 @@ class ListingMine {
     required this.city,
     required this.images,
     required this.isBoosted,
+    required this.viewsCount,
+    required this.savesCount,
   });
 
   final int id;
@@ -100,6 +102,8 @@ class ListingMine {
   final String city;
   final List<PostingImage> images;
   final bool isBoosted;
+  final int viewsCount;
+  final int savesCount;
 
   String get cover => images.isEmpty ? '' : images.first.url;
 
@@ -120,6 +124,16 @@ class ListingMine {
       city: json['city'] as String? ?? '',
       images: imageList,
       isBoosted: json['is_boosted'] as bool? ?? false,
+      // Backend field is view_count (Listing model); also accept views_count /
+      // views aliases from older API versions.
+      viewsCount: (json['view_count'] as num?)?.toInt() ??
+          (json['views_count'] as num?)?.toInt() ??
+          (json['views'] as num?)?.toInt() ??
+          0,
+      savesCount: (json['favorites_count'] as num?)?.toInt() ??
+          (json['favourites_count'] as num?)?.toInt() ??
+          (json['saved_count'] as num?)?.toInt() ??
+          0,
     );
   }
 }

@@ -1,0 +1,24 @@
+{
+  "folders": [
+    {
+      "name": "marketplace_frontend",
+      "path": "."
+    },
+    {
+      "name": "backend — marketplace",
+      "path": "../marketplace"
+    },
+    {
+      "name": "backend — marketplace_backend/Marketplace",
+      "path": "../marketplace_backend/Marketplace"
+    }
+  ],
+  "settings": {
+    "search.exclude": {
+      "**/.venv": true,
+      "**/__pycache__": true,
+      "**/.dart_tool": true,
+      "**/build": true
+    }
+  }
+}
