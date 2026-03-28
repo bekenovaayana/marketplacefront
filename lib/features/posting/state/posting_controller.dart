@@ -109,10 +109,47 @@ class PostingController extends StateNotifier<PostingState> {
         categories: cats,
         draftId: draftId,
       );
-      await loadMyListings(status: state.myStatus);
       if (draftId != null) {
         await _loadDraftData(draftId);
       }
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+      return;
+    }
+
+    try {
+      final items = await _repository.myListings(status: state.myStatus);
+      state = state.copyWith(myListings: items);
+    } catch (_) {
+      // Don't block the create flow if /listings/me fails (guest race, expired token, etc.).
+      // User can open «My listings» to retry via loadMyListings.
+    }
+  }
+
+  /// Fresh draft for the standalone «Post a Listing» flow: parallel categories + draft.
+  Future<void> initForNewListing() async {
+    _autosaveDebounce?.cancel();
+    await _localStore.clearDraftId();
+    state = const PostingState(
+      isLoading: true,
+      payload: PostingDraftPayload(currency: 'USD'),
+    );
+    try {
+      final results = await Future.wait<Object>([
+        _repository.categories(),
+        _repository.createDraft(const PostingDraftPayload(currency: 'USD')),
+      ]);
+      final cats = results.first as List<HomeCategory>;
+      final id = results.last as int;
+      await _localStore.saveDraftId(id);
+      state = state.copyWith(
+        isLoading: false,
+        categories: cats,
+        draftId: id,
+        payload: const PostingDraftPayload(currency: 'USD'),
+        currentStep: 0,
+        clearError: true,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }

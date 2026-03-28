@@ -7,6 +7,7 @@ import 'package:marketplace_frontend/features/auth/ui/auth_gate_page.dart';
 import 'package:marketplace_frontend/features/auth/ui/login_page.dart';
 import 'package:marketplace_frontend/features/auth/ui/register_page.dart';
 import 'package:marketplace_frontend/features/notifications/ui/notifications_screen.dart';
+import 'package:marketplace_frontend/features/posting/ui/post_listing_page.dart';
 import 'package:marketplace_frontend/features/profile/ui/edit_profile_screen.dart';
 import 'package:marketplace_frontend/features/promotions/ui/promote_listing_screen.dart';
 import 'package:marketplace_frontend/features/settings/ui/settings_language_screen.dart';
@@ -34,6 +35,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         '/settings/notifications',
         '/settings/password',
       };
+      if (auth.initialized && auth.isGuest && state.matchedLocation == '/listings/new') {
+        return '/app?tab=4';
+      }
       if (auth.initialized &&
           auth.isGuest &&
           protectedRoutes.contains(state.matchedLocation)) {
@@ -106,6 +110,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/promote',
         builder: (context, state) => const PromoteListingScreen(),
+      ),
+      GoRoute(
+        path: '/listings/new',
+        builder: (context, state) => const PostListingPage(),
       ),
     ],
     errorBuilder: (context, state) =>

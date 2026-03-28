@@ -51,9 +51,9 @@ class ProfileMyListingsPanel extends ConsumerWidget {
       return '$t: ${AppStrings.of(context, 'profileChipAll')}';
     }
     String name = AppStrings.of(context, 'profileChipAll');
-    for (final c in s.apiCategories) {
-      if (c.id == s.categoryId) {
-        name = c.name.isNotEmpty ? c.name : c.slug;
+    for (final c in s.resolvedChips) {
+      if (c.categoryId == s.categoryId) {
+        name = c.labelRu;
         break;
       }
     }
@@ -79,65 +79,76 @@ class ProfileMyListingsPanel extends ConsumerWidget {
       isScrollControlled: true,
       builder: (ctx) {
         String tt(String k) => AppStrings.of(ctx, k);
+        final maxH = MediaQuery.sizeOf(ctx).height * 0.72;
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.only(bottom: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Text(
-                    tt('profileCategory'),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxH),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      tt('profileCategory'),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
-                ),
-                ListTile(
-                  title: Text(tt('profileChipAll')),
-                  trailing: s.categoryId == null
-                      ? const Icon(Icons.check, color: Color(0xFF1BB35E))
-                      : null,
-                  onTap: () async {
-                    notifier.selectCategoryChip(null);
-                    Navigator.pop(ctx);
-                    await notifier.refresh();
-                  },
-                ),
-                ...s.resolvedChips.map(
-                  (c) => ListTile(
-                    title: Text(c.labelRu),
-                    enabled: c.isMatched,
-                    subtitle: c.isMatched
-                        ? null
-                        : Text(tt('categoryChipUnavailable')),
-                    trailing: s.categoryId == c.categoryId
-                        ? const Icon(Icons.check, color: Color(0xFF1BB35E))
-                        : null,
-                    onTap: c.isMatched
-                        ? () async {
-                            notifier.selectCategoryChip(c.categoryId);
+                  Expanded(
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        ListTile(
+                          title: Text(tt('profileChipAll')),
+                          trailing: s.categoryId == null
+                              ? const Icon(Icons.check, color: Color(0xFF1BB35E))
+                              : null,
+                          onTap: () async {
+                            notifier.selectCategoryChip(null);
                             Navigator.pop(ctx);
                             await notifier.refresh();
-                          }
-                        : null,
+                          },
+                        ),
+                        ...s.resolvedChips.map(
+                          (c) => ListTile(
+                            title: Text(c.labelRu),
+                            enabled: c.isMatched,
+                            subtitle: c.isMatched
+                                ? null
+                                : Text(tt('categoryChipUnavailable')),
+                            trailing: c.categoryId != null &&
+                                    s.categoryId == c.categoryId
+                                ? const Icon(Icons.check, color: Color(0xFF1BB35E))
+                                : null,
+                            onTap: c.isMatched
+                                ? () async {
+                                    notifier.selectCategoryChip(c.categoryId);
+                                    Navigator.pop(ctx);
+                                    await notifier.refresh();
+                                  }
+                                : null,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: TextButton(
+                            onPressed: () async {
+                              notifier.selectCategoryChip(null);
+                              Navigator.pop(ctx);
+                              await notifier.refresh();
+                            },
+                            child: Text(tt('profileCategoryClear')),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: TextButton(
-                    onPressed: () async {
-                      notifier.selectCategoryChip(null);
-                      Navigator.pop(ctx);
-                      await notifier.refresh();
-                    },
-                    child: Text(tt('profileCategoryClear')),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -303,7 +314,7 @@ class ProfileMyListingsPanel extends ConsumerWidget {
           _EmptyListings(
             title: _emptyTitle(context, s.tab),
             hint: tt('profileTemshikHint'),
-            onPost: () => context.go('/app?tab=2'),
+            onPost: () => context.push('/listings/new'),
           )
         else
           ListView.separated(
@@ -427,7 +438,7 @@ class _PendingPaymentsList extends StatelessWidget {
       return _EmptyListings(
         title: tt(context, 'profileEmptyPending'),
         hint: tt(context, 'profileTemshikHint'),
-        onPost: () => context.go('/app?tab=2'),
+        onPost: () => context.push('/listings/new'),
       );
     }
     return ListView.separated(

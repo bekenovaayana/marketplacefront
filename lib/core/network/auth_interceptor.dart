@@ -11,6 +11,12 @@ class AuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
+    final isPublic = options.extra['publicEndpoint'] == true;
+    if (isPublic) {
+      options.headers.remove('Authorization');
+      handler.next(options);
+      return;
+    }
     final token = await _tokenStorage.readAccessToken();
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';

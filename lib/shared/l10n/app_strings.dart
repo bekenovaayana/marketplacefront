@@ -98,6 +98,7 @@ class AppStrings {
       'profileTemshikHint':
           'Post and discover deals on Temshik — simple and fast.',
       'profilePostListing': 'Post a listing',
+      'profileSaveDraft': 'Save draft',
       'profileBoosted': 'Boost',
       'profilePendingPayTitle': 'Payment required',
       'categoryChipUnavailable': 'Category not found in catalog',
@@ -195,6 +196,7 @@ class AppStrings {
       'profileTemshikHint':
           'Post and discover deals on Temshik — simple and fast.',
       'profilePostListing': 'Подать объявление',
+      'profileSaveDraft': 'Сохранить черновик',
       'profileBoosted': 'Продвижение',
       'profilePendingPayTitle': 'Ожидает оплаты',
       'categoryChipUnavailable': 'Категория не найдена в каталоге',

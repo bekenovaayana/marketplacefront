@@ -17,7 +17,11 @@ class PostingRepository {
   final Dio _dio;
 
   Future<List<HomeCategory>> categories() async {
-    final response = await _dio.get('/categories', queryParameters: {'limit': 100});
+    final response = await _dio.get(
+      '/categories',
+      options: Options(extra: {'publicEndpoint': true}),
+      queryParameters: {'limit': 500},
+    );
     final data = response.data;
     if (data is List<dynamic>) {
       return data.map((e) => HomeCategory.fromJson(e as Map<String, dynamic>)).toList();

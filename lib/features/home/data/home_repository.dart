@@ -122,6 +122,7 @@ class HomeRepository {
   }) async {
     final response = await _dio.get(
       '/home',
+      options: Options(extra: {'publicEndpoint': true}),
       queryParameters: {
         'categories_limit': categoriesLimit,
         'items_limit': itemsLimit,
@@ -133,7 +134,11 @@ class HomeRepository {
   }
 
   Future<List<HomeCategory>> getCategories() async {
-    final response = await _dio.get('/categories', queryParameters: {'limit': 100});
+    final response = await _dio.get(
+      '/categories',
+      options: Options(extra: {'publicEndpoint': true}),
+      queryParameters: {'limit': 500},
+    );
     final data = response.data;
     if (data is List) {
       return data
@@ -147,7 +152,11 @@ class HomeRepository {
   }
 
   Future<ListingPageResult> searchListings(ListingQuery query) async {
-    final response = await _dio.get('/listings', queryParameters: query.toMap());
+    final response = await _dio.get(
+      '/listings',
+      options: Options(extra: {'publicEndpoint': true}),
+      queryParameters: query.toMap(),
+    );
     final data = response.data as Map<String, dynamic>;
     final items = (data['items'] as List<dynamic>? ?? [])
         .map((e) => ListingPublic.fromJson(e as Map<String, dynamic>))

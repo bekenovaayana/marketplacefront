@@ -7,6 +7,7 @@ import 'package:marketplace_frontend/features/home/state/home_controller.dart';
 import 'package:marketplace_frontend/features/home/ui/widgets/home_filter_sheet.dart';
 import 'package:marketplace_frontend/features/listings/ui/listing_detail_page.dart';
 import 'package:marketplace_frontend/features/listings/models/listing_public.dart';
+import 'package:marketplace_frontend/shared/data/category_catalog.dart';
 import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
 import 'package:marketplace_frontend/shared/widgets/listing_card.dart';
 import 'package:marketplace_frontend/shared/widgets/pagination_loader.dart';
@@ -111,41 +112,93 @@ class _HomeTabState extends ConsumerState<HomeTab>
                 title: t('categories'),
                 action: state.categories.length > 8 ? t('seeAll') : null,
               ),
-              SizedBox(
-                height: 90,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemBuilder: (context, index) {
-                    final category = state.categories[index];
-                    return GestureDetector(
-                      onTap: () => ref.read(homeControllerProvider.notifier).applyFilters(
-                            ListingQuery(categoryId: category.id),
-                          ),
-                      child: Container(
-                        width: 166,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEAF8F0),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(category.name,
-                                style: const TextStyle(fontWeight: FontWeight.w600)),
-                            Text(
-                              '${category.listingsCount} объявлений',
-                              style: TextStyle(color: Colors.grey.shade700),
+              Builder(
+                builder: (context) {
+                  final resolved = CategoryCatalog.resolve(state.categories);
+                  final (row1, row2) = CategoryCatalog.splitTwoRows(resolved);
+
+                  Widget railRow(List<ResolvedFixedCategory> row) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final item in row)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: GestureDetector(
+                                onTap: item.isMatched
+                                    ? () => ref
+                                          .read(homeControllerProvider.notifier)
+                                          .setHomeCategoryFilter(item.categoryId)
+                                    : () => ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text(t('categoryChipUnavailable'))),
+                                        ),
+                                child: Container(
+                                  width: 166,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: item.categoryId != null && state.query.categoryId == item.categoryId
+                                        ? const Color(0xFFD7F2E2)
+                                        : const Color(0xFFEAF8F0),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: item.isMatched
+                                        ? Border.all(
+                                            color: item.categoryId != null &&
+                                                    state.query.categoryId == item.categoryId
+                                                ? const Color(0xFF1BB35E)
+                                                : Colors.transparent,
+                                          )
+                                        : Border.all(color: Colors.black12),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        item.labelRu,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                      Text(
+                                        item.isMatched
+                                            ? '${item.apiCategory?.listingsCount ?? 0} объявлений'
+                                            : t('categoryChipUnavailable'),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: item.isMatched ? Colors.grey.shade700 : Colors.grey.shade500,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
-                          ],
-                        ),
+                        ],
                       ),
                     );
-                  },
-                  separatorBuilder: (context, index) => const SizedBox(width: 10),
-                  itemCount: state.categories.length,
-                ),
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: () => ref.read(homeControllerProvider.notifier).setHomeCategoryFilter(null),
+                          child: Text(
+                            state.query.categoryId == null ? '${t('clear')}: ${t('profileChipAll')}' : t('clear'),
+                          ),
+                        ),
+                      ),
+                      railRow(row1),
+                      const SizedBox(height: 8),
+                      railRow(row2),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 10),
               _PromoBanner(

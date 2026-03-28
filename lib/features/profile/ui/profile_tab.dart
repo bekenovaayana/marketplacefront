@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:marketplace_frontend/core/errors/error_mapper.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/features/profile/state/my_active_listings_controller.dart';
+import 'package:marketplace_frontend/features/profile/state/profile_listings_nav_intent.dart';
 import 'package:marketplace_frontend/features/profile/state/profile_controller.dart';
 import 'package:marketplace_frontend/features/profile/ui/widgets/profile_my_listings_panel.dart';
 import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
@@ -39,11 +40,38 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
     if (mounted) await n.refresh();
   }
 
+  Future<void> _applyListingsIntent(ProfileListingsNavIntent intent) async {
+    if (!mounted) return;
+    final n = ref.read(myActiveListingsProvider.notifier);
+    await n.ensureCategories();
+    if (!mounted) return;
+    final s = ref.read(myActiveListingsProvider);
+    int? cat = intent.filterCategoryId;
+    if (cat != null) {
+      final matches = s.resolvedChips.any(
+        (c) => c.categoryId == cat && c.isMatched,
+      );
+      if (!matches) cat = null;
+    }
+    n.selectCategoryChip(cat);
+    await n.setTab(intent.tab);
+    if (!mounted) return;
+    ref.read(profileListingsNavIntentProvider.notifier).clear();
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     String tt(String k) => AppStrings.of(context, k);
     final auth = ref.watch(authControllerProvider);
+
+    ref.listen<ProfileListingsNavIntent?>(
+      profileListingsNavIntentProvider,
+      (previous, next) {
+        if (next == null) return;
+        Future.microtask(() => _applyListingsIntent(next));
+      },
+    );
 
     if (!auth.isAuthenticated) {
       _listingsBootstrapped = false;

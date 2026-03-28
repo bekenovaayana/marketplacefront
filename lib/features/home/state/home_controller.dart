@@ -43,7 +43,6 @@ class HomeState {
   bool get hasMore => page < totalPages;
   bool get inSearchMode =>
       (query.q?.isNotEmpty ?? false) ||
-      query.categoryId != null ||
       (query.city?.isNotEmpty ?? false) ||
       query.minPrice != null ||
       query.maxPrice != null ||
@@ -127,6 +126,23 @@ class HomeController extends StateNotifier<HomeState> {
 
   Future<void> applyFilters(ListingQuery query) async {
     await _runSearch(query.copyWith(page: 1, includeFacets: false));
+    await loadInitial();
+  }
+
+  /// Home rail filter: keep Home layout and reload recommended/latest by selected category.
+  Future<void> setHomeCategoryFilter(int? categoryId) async {
+    state = state.copyWith(
+      query: state.query.copyWith(
+        categoryId: categoryId,
+        clearCategory: categoryId == null,
+        clearQuery: true,
+        clearCity: true,
+        clearPrice: true,
+        sort: 'newest',
+        page: 1,
+      ),
+      clearError: true,
+    );
     await loadInitial();
   }
 
