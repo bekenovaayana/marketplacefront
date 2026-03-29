@@ -197,10 +197,8 @@ class ConversationMessage {
     required this.text,
     required this.sentAt,
     this.attachments = const [],
-    /// From API `is_mine` / `isMine` (false when the key is absent).
+    /// API `is_mine` / `isMine` — only source for left/right (plus optimistic negative [id]).
     required this.isMine,
-    /// Whether the JSON included `is_mine` / `isMine`. If true, [isMine] wins over sender heuristics.
-    this.serverSentIsMineFlag = false,
   });
 
   final int id;
@@ -209,20 +207,11 @@ class ConversationMessage {
   final DateTime sentAt;
   final List<MessageAttachment> attachments;
   final bool isMine;
-  final bool serverSentIsMineFlag;
 
-  /// Row alignment: optimistic id; else explicit server [isMine]; else [senderId] vs [currentUserId].
-  bool layoutIsMine(int? currentUserId) {
-    if (id < 0) return true;
-    if (serverSentIsMineFlag) return isMine;
-    if (currentUserId != null && senderId != 0 && senderId == currentUserId) {
-      return true;
-    }
-    return false;
-  }
+  /// Optimistic temp ids are always «mine»; otherwise strictly [isMine] from JSON.
+  bool get layoutIsMine => id < 0 || isMine;
 
   factory ConversationMessage.fromJson(Map<String, dynamic> json) {
-    final hasFlag = json.containsKey('is_mine') || json.containsKey('isMine');
     return ConversationMessage(
       id: JsonRead.intVal(json['id']),
       senderId: JsonRead.intVal(json['sender_id'] ?? json['senderId']),
@@ -233,7 +222,6 @@ class ConversationMessage {
           DateTime.now(),
       attachments: JsonRead.listOfMap(json['attachments'], MessageAttachment.fromJson),
       isMine: JsonRead.boolVal(json['is_mine'] ?? json['isMine']),
-      serverSentIsMineFlag: hasFlag,
     );
   }
 }

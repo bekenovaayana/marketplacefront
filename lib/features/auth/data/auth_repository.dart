@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:marketplace_frontend/core/errors/api_exception.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
@@ -63,16 +64,31 @@ class AuthRepository {
       if (token.isEmpty) {
         throw const ApiException('Access token is missing');
       }
-      final userJson = (data['user'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-      final user = AuthUser.fromJson(userJson);
+      // FastAPI returns only tokens on POST /auth/login — profile is GET /users/me.
       await _tokenStorage.saveAccessToken(token);
       await _tokenStorage.saveRefreshToken(extractRefreshToken(data));
+      if (kDebugMode) {
+        debugPrint('GET ME START (/users/me)');
+      }
+      final user = await _api.me();
+      if (kDebugMode) {
+        debugPrint('GET ME SUCCESS id=${user.id}');
+      }
       return AuthSession(accessToken: token, user: user);
+    } on ApiException {
+      rethrow;
     } on DioException catch (e) {
+      final inner = e.error;
+      if (inner is ApiException) {
+        throw inner;
+      }
       throw ApiException(
         _extractErrorMessage(e.response?.data, 'Login failed'),
         statusCode: e.response?.statusCode,
       );
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Login failed: $e');
     }
   }
 

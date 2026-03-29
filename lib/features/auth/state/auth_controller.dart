@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:marketplace_frontend/core/errors/api_exception.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
@@ -35,19 +36,38 @@ class AuthController extends StateNotifier<AuthState> {
       return;
     }
     state = state.copyWith(isLoading: true, clearError: true);
-    final user = await _repository.restoreSession();
-    state = state.copyWith(
-      isLoading: false,
-      initialized: true,
-      user: user,
-      mode: user == null ? AuthMode.guest : AuthMode.authenticated,
-    );
+    try {
+      final user = await _repository.restoreSession();
+      state = state.copyWith(
+        isLoading: false,
+        initialized: true,
+        user: user,
+        mode: user == null ? AuthMode.guest : AuthMode.authenticated,
+      );
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('AUTH INIT ERROR: $e\n$st');
+      }
+      state = state.copyWith(
+        isLoading: false,
+        initialized: true,
+        user: null,
+        mode: AuthMode.guest,
+        error: e.toString(),
+      );
+    }
   }
 
   Future<bool> login({required String email, required String password}) async {
+    if (kDebugMode) {
+      debugPrint('LOGIN START');
+    }
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final session = await _repository.login(email: email, password: password);
+      if (kDebugMode) {
+        debugPrint('LOGIN SUCCESS (token saved, profile loaded id=${session.user.id})');
+      }
       state = state.copyWith(
         isLoading: false,
         user: session.user,
@@ -56,7 +76,16 @@ class AuthController extends StateNotifier<AuthState> {
       _reauthCoordinator.resolve(true);
       return true;
     } on ApiException catch (e) {
+      if (kDebugMode) {
+        debugPrint('LOGIN FAIL: ${e.message}');
+      }
       state = state.copyWith(isLoading: false, error: e.message);
+      return false;
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('LOGIN UNEXPECTED ERROR: $e\n$st');
+      }
+      state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
   }
@@ -83,6 +112,12 @@ class AuthController extends StateNotifier<AuthState> {
       return true;
     } on ApiException catch (e) {
       state = state.copyWith(isLoading: false, error: e.message);
+      return false;
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('REGISTER UNEXPECTED ERROR: $e\n$st');
+      }
+      state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
   }

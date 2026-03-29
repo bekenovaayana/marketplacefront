@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:marketplace_frontend/core/json/json_read.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
+import 'package:marketplace_frontend/features/favorites/data/favorite_record.dart';
 import 'package:marketplace_frontend/features/listings/models/listing_public.dart';
 
 final favoritesRepositoryProvider = Provider<FavoritesRepository>((ref) {
@@ -27,18 +28,39 @@ class FavoritesRepository {
     }
   }
 
-  /// DELETE /favorites/{listing_id} — 204.
+  /// DELETE /favorites/{listing_id} — **204**, empty body (no JSON).
   Future<void> remove(int listingId) async {
     await _dio.delete<void>('/favorites/$listingId');
   }
 
-  Future<List<ListingPublic>> list({int page = 1, int pageSize = 20}) async {
+  /// Grid / same card as feed: **GET /favorites/listings** → [ListingPublic], `is_favorite` true.
+  Future<List<ListingPublic>> listListingsForGrid({
+    int page = 1,
+    int pageSize = 20,
+  }) async {
     final response = await _dio.get(
-      '/favorites',
+      '/favorites/listings',
       queryParameters: {'page': page, 'page_size': pageSize},
     );
     final raw = response.data;
     if (raw is! Map<String, dynamic>) return [];
     return JsonRead.listOfMap(raw['items'], ListingPublic.fromJson);
   }
+
+  /// Rows with favorite metadata — **GET /favorites** (do not use for the home-style grid).
+  Future<List<FavoriteRecord>> listFavoriteRecords({
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final response = await _dio.get(
+      '/favorites',
+      queryParameters: {'page': page, 'page_size': pageSize},
+    );
+    final raw = response.data;
+    if (raw is! Map<String, dynamic>) return [];
+    return JsonRead.listOfMap(raw['items'], FavoriteRecord.fromJson);
+  }
+
+  Future<List<ListingPublic>> list({int page = 1, int pageSize = 20}) =>
+      listListingsForGrid(page: page, pageSize: pageSize);
 }

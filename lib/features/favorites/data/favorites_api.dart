@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:marketplace_frontend/core/json/json_read.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
 import 'package:marketplace_frontend/features/listings/models/listing.dart';
+import 'package:marketplace_frontend/features/listings/models/listing_public.dart';
 
 final favoritesApiProvider = Provider<FavoritesApi>((ref) {
   return FavoritesApi(ref.watch(dioProvider));
@@ -33,13 +34,35 @@ class FavoritesApi {
     return _dio.delete<void>('/favorites/$listingId');
   }
 
-  Future<List<Listing>> getFavorites({int page = 1, int pageSize = 20}) async {
+  /// Same shape as feed listings; use **GET /favorites/listings** (not raw `/favorites`).
+  Future<List<ListingPublic>> getFavoriteListings({
+    int page = 1,
+    int pageSize = 20,
+  }) async {
     final response = await _dio.get(
-      '/favorites',
+      '/favorites/listings',
       queryParameters: {'page': page, 'page_size': pageSize},
     );
     final raw = response.data;
     if (raw is! Map<String, dynamic>) return [];
-    return JsonRead.listOfMap(raw['items'], Listing.fromJson);
+    return JsonRead.listOfMap(raw['items'], ListingPublic.fromJson);
+  }
+
+  /// Legacy name — delegates to [getFavoriteListings].
+  Future<List<Listing>> getFavorites({int page = 1, int pageSize = 20}) async {
+    final rows = await getFavoriteListings(page: page, pageSize: pageSize);
+    return rows
+        .map(
+          (p) => Listing(
+            id: p.id,
+            title: p.title,
+            description: p.description,
+            price: p.price,
+            city: p.city,
+            ownerId: p.userId ?? 0,
+            isFavorite: true,
+          ),
+        )
+        .toList();
   }
 }

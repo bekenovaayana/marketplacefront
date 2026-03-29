@@ -11,7 +11,6 @@ import 'package:marketplace_frontend/features/conversations/data/conversation_mo
 import 'package:marketplace_frontend/features/conversations/data/conversations_api.dart';
 import 'package:marketplace_frontend/features/conversations/presentation/pending_attachment.dart';
 import 'package:marketplace_frontend/features/conversations/state/conversations_controller.dart';
-import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/features/conversations/ui/widgets/chat_input_bar.dart';
 import 'package:marketplace_frontend/features/conversations/ui/widgets/message_attachment_view.dart';
 import 'package:marketplace_frontend/features/notifications/state/unread_notifications_provider.dart';
@@ -167,7 +166,6 @@ class _ConversationDetailPageState
       text: text,
       sentAt: DateTime.now(),
       isMine: true,
-      serverSentIsMineFlag: true,
       attachments: attachmentPayload
           .map(
             (e) => MessageAttachment(
@@ -224,7 +222,6 @@ class _ConversationDetailPageState
 
   @override
   Widget build(BuildContext context) {
-    final myUserId = ref.watch(authControllerProvider).user?.id;
     final barTitle = widget.peerTitle?.trim().isNotEmpty == true
         ? widget.peerTitle!.trim()
         : 'Messages';
@@ -279,7 +276,6 @@ class _ConversationDetailPageState
                         }
                         return _MessageBubbleRow(
                           msg: msg,
-                          currentUserId: myUserId,
                           formatTime: _formatTime,
                         );
                       },
@@ -495,17 +491,15 @@ class _ConversationDetailPageState
 class _MessageBubbleRow extends StatelessWidget {
   const _MessageBubbleRow({
     required this.msg,
-    required this.currentUserId,
     required this.formatTime,
   });
 
   final ConversationMessage msg;
-  final int? currentUserId;
   final String Function(DateTime date) formatTime;
 
   @override
   Widget build(BuildContext context) {
-    final mine = msg.layoutIsMine(currentUserId);
+    final mine = msg.layoutIsMine;
     final maxW = MediaQuery.sizeOf(context).width * 0.78;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bubbleColor = mine

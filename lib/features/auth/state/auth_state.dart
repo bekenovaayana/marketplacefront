@@ -2,6 +2,9 @@ import 'package:marketplace_frontend/features/auth/models/auth_user.dart';
 
 enum AuthMode { guest, authenticated }
 
+/// Sentinel so [AuthState.copyWith] can set `user` to `null` (logout / guest).
+const Object _kUserKeep = Object();
+
 class AuthState {
   const AuthState({
     this.isLoading = false,
@@ -23,7 +26,7 @@ class AuthState {
   AuthState copyWith({
     bool? isLoading,
     bool? initialized,
-    AuthUser? user,
+    Object? user = _kUserKeep,
     String? error,
     AuthMode? mode,
     bool clearError = false,
@@ -31,7 +34,7 @@ class AuthState {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
       initialized: initialized ?? this.initialized,
-      user: user ?? this.user,
+      user: identical(user, _kUserKeep) ? this.user : user as AuthUser?,
       error: clearError ? null : (error ?? this.error),
       mode: mode ?? this.mode,
     );

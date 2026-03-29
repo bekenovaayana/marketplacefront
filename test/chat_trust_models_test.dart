@@ -2,11 +2,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marketplace_frontend/features/conversations/data/conversation_models.dart';
 import 'package:marketplace_frontend/features/conversations/data/conversations_api.dart';
+import 'package:marketplace_frontend/features/favorites/data/favorite_record.dart';
 import 'package:marketplace_frontend/features/profile/data/profile_models.dart';
 
 void main() {
   group('ConversationMessage', () {
-    test('uses is_mine; defaults false when omitted', () {
+    test('bubble side follows is_mine only (no sender_id guess)', () {
       final m = ConversationMessage.fromJson({
         'id': 1,
         'sender_id': 99,
@@ -15,7 +16,7 @@ void main() {
         'is_mine': true,
       });
       expect(m.isMine, isTrue);
-      expect(m.layoutIsMine(1), isTrue);
+      expect(m.layoutIsMine, isTrue);
       final other = ConversationMessage.fromJson({
         'id': 2,
         'sender_id': 1,
@@ -24,7 +25,7 @@ void main() {
         'is_mine': false,
       });
       expect(other.isMine, isFalse);
-      expect(other.layoutIsMine(1), isFalse);
+      expect(other.layoutIsMine, isFalse);
       final noFlag = ConversationMessage.fromJson({
         'id': 3,
         'sender_id': 1,
@@ -32,8 +33,15 @@ void main() {
         'sent_at': '2020-01-01T00:00:00Z',
       });
       expect(noFlag.isMine, isFalse);
-      expect(noFlag.layoutIsMine(1), isTrue);
-      expect(noFlag.layoutIsMine(null), isFalse);
+      expect(noFlag.layoutIsMine, isFalse);
+      final optimistic = ConversationMessage(
+        id: -1,
+        senderId: 0,
+        text: 't',
+        sentAt: DateTime.utc(2020),
+        isMine: true,
+      );
+      expect(optimistic.layoutIsMine, isTrue);
     });
   });
 
@@ -110,6 +118,29 @@ void main() {
     final api = ConversationsApi(Dio());
     final key = api.buildIdempotencyKey();
     expect(key, matches(RegExp(r'^[0-9a-fA-F-]{36}$')));
+  });
+
+  test('FavoriteRecord parses GET /favorites row', () {
+    final r = FavoriteRecord.fromJson({
+      'id': 10,
+      'user_id': 1,
+      'listing_id': 20,
+      'created_at': '2020-01-01T00:00:00Z',
+      'listing_is_available': false,
+      'listing': {
+        'id': 20,
+        'title': 'Phone',
+        'description': '',
+        'price': 100,
+        'currency': 'KGS',
+        'city': 'B',
+        'is_favorite': true,
+      },
+    });
+    expect(r.id, 10);
+    expect(r.listingId, 20);
+    expect(r.listingIsAvailable, isFalse);
+    expect(r.listing?.title, 'Phone');
   });
 
   test('parseMessageFromPostResponse unwraps message envelope', () {

@@ -44,16 +44,23 @@ class AuthApi {
     return AuthUser.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// [GET /auth/me] and [GET /users/me] return the same payload; prefer /auth/me,
-  /// fall back to /users/me if the server is older (404).
+  /// Backend canonical profile: [GET /users/me]. Tries [GET /auth/me] only if 404 (older servers).
   Future<AuthUser> me() async {
     try {
-      final response = await _dio.get('/auth/me');
-      return AuthUser.fromJson(response.data as Map<String, dynamic>);
+      final response = await _dio.get('/users/me');
+      final data = response.data;
+      if (data is! Map<String, dynamic>) {
+        throw StateError('GET /users/me: expected JSON object, got ${data.runtimeType}');
+      }
+      return AuthUser.fromJson(data);
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
-        final response = await _dio.get('/users/me');
-        return AuthUser.fromJson(response.data as Map<String, dynamic>);
+        final response = await _dio.get('/auth/me');
+        final data = response.data;
+        if (data is! Map<String, dynamic>) {
+          throw StateError('GET /auth/me: expected JSON object');
+        }
+        return AuthUser.fromJson(data);
       }
       rethrow;
     }
