@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:marketplace_frontend/core/config/env.dart';
+import 'package:marketplace_frontend/core/network/api_urls.dart';
 import 'package:marketplace_frontend/features/conversations/data/conversation_models.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -15,7 +15,7 @@ class MessageAttachmentView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (attachment.mimeType.startsWith('image/')) {
-      final imageUrl = _absoluteUrl(attachment.fileUrl);
+      final imageUrl = ApiUrls.networkImageUrl(attachment.fileUrl);
       return GestureDetector(
         onTap: () => _openImageViewer(context, imageUrl),
         child: ClipRRect(
@@ -82,7 +82,7 @@ class MessageAttachmentView extends StatelessWidget {
   }
 
   Future<void> _openPdf() async {
-    final uri = Uri.parse(_absoluteUrl(attachment.fileUrl));
+    final uri = Uri.parse(ApiUrls.absoluteUrl(attachment.fileUrl));
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
@@ -113,12 +113,6 @@ class MessageAttachmentView extends StatelessWidget {
     );
   }
 
-  String _absoluteUrl(String path) {
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
-    }
-    return '${Env.baseUrl}$path';
-  }
 }
 
 String formatFileSize(int bytes) {

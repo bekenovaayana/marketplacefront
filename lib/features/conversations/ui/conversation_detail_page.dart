@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -10,6 +11,7 @@ import 'package:marketplace_frontend/features/conversations/data/conversation_mo
 import 'package:marketplace_frontend/features/conversations/data/conversations_api.dart';
 import 'package:marketplace_frontend/features/conversations/presentation/pending_attachment.dart';
 import 'package:marketplace_frontend/features/conversations/state/conversations_controller.dart';
+import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/features/conversations/ui/widgets/chat_input_bar.dart';
 import 'package:marketplace_frontend/features/conversations/ui/widgets/message_attachment_view.dart';
 import 'package:marketplace_frontend/features/notifications/state/unread_notifications_provider.dart';
@@ -17,9 +19,14 @@ import 'package:marketplace_frontend/shared/widgets/app_notification_overlay.dar
 import 'package:marketplace_frontend/shared/widgets/app_scaffold.dart';
 
 class ConversationDetailPage extends ConsumerStatefulWidget {
-  const ConversationDetailPage({super.key, required this.conversationId});
+  const ConversationDetailPage({
+    super.key,
+    required this.conversationId,
+    this.peerTitle,
+  });
 
   final int conversationId;
+  final String? peerTitle;
 
   @override
   ConsumerState<ConversationDetailPage> createState() =>
@@ -48,7 +55,7 @@ class _ConversationDetailPageState
   int _page = 1;
   bool _hasMore = true;
   String? _error;
-  static const _pageSize = 30;
+  static const _pageSize = 50;
 
   @override
   void initState() {
@@ -115,6 +122,11 @@ class _ConversationDetailPageState
 
   @override
   void dispose() {
+    final cid = widget.conversationId;
+    final api = ref.read(conversationsApiProvider);
+    unawaited(
+      api.markConversationRead(cid).catchError((Object _) {}),
+    );
     ref.read(unreadNotificationsCountProvider.notifier).refresh();
     _controller.removeListener(_onTextChanged);
     _controller.dispose();
@@ -154,6 +166,8 @@ class _ConversationDetailPageState
       senderId: 0,
       text: text,
       sentAt: DateTime.now(),
+      isMine: true,
+      serverSentIsMineFlag: true,
       attachments: attachmentPayload
           .map(
             (e) => MessageAttachment(
@@ -175,13 +189,23 @@ class _ConversationDetailPageState
       _pendingAttachments = const [];
     });
     try {
-      await api.sendMessage(
+      final serverMsg = await api.sendMessage(
         conversationId: widget.conversationId,
         text: text.isEmpty ? null : text,
         attachments: attachmentPayload,
         idempotencyKey: requestId,
       );
-      await _loadMessages();
+      if (!mounted) return;
+      if (serverMsg != null) {
+        setState(() {
+          _messages = [
+            ..._messages.where((m) => m.id != optimistic.id),
+            serverMsg,
+          ];
+        });
+      } else {
+        await _loadMessages();
+      }
       await ref
           .read(conversationsControllerProvider.notifier)
           .refreshUnreadSummary();
@@ -200,8 +224,12 @@ class _ConversationDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    final myUserId = ref.watch(authControllerProvider).user?.id;
+    final barTitle = widget.peerTitle?.trim().isNotEmpty == true
+        ? widget.peerTitle!.trim()
+        : 'Messages';
     return AppScaffold(
-      title: 'Messages',
+      title: barTitle,
       body: Column(
         children: [
           Expanded(
@@ -249,54 +277,10 @@ class _ConversationDetailPageState
                             msg.attachments.isEmpty) {
                           return const SizedBox.shrink();
                         }
-                        final isMine = msg.senderId == 0;
-                        return Align(
-                          alignment: isMine
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            constraints: const BoxConstraints(maxWidth: 280),
-                            decoration: BoxDecoration(
-                              color: isMine
-                                  ? Theme.of(
-                                      context,
-                                    ).colorScheme.primaryContainer
-                                  : Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (msg.attachments.isNotEmpty) ...[
-                                  ...msg.attachments.map(
-                                    (attachment) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 6),
-                                      child: MessageAttachmentView(
-                                        attachment: attachment,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                                if (msg.text.trim().isNotEmpty) ...[
-                                  Text(msg.text),
-                                  const SizedBox(height: 4),
-                                ],
-                                Text(
-                                  _formatTime(msg.sentAt),
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(color: Colors.grey.shade700),
-                                ),
-                              ],
-                            ),
-                          ),
+                        return _MessageBubbleRow(
+                          msg: msg,
+                          currentUserId: myUserId,
+                          formatTime: _formatTime,
                         );
                       },
                     ),
@@ -504,5 +488,80 @@ class _ConversationDetailPageState
   void _showMessage(String message) {
     if (!mounted) return;
     showAppNotification(context, message);
+  }
+}
+
+/// One [Row] per message so alignment is correct with [ListView.reverse].
+class _MessageBubbleRow extends StatelessWidget {
+  const _MessageBubbleRow({
+    required this.msg,
+    required this.currentUserId,
+    required this.formatTime,
+  });
+
+  final ConversationMessage msg;
+  final int? currentUserId;
+  final String Function(DateTime date) formatTime;
+
+  @override
+  Widget build(BuildContext context) {
+    final mine = msg.layoutIsMine(currentUserId);
+    final maxW = MediaQuery.sizeOf(context).width * 0.78;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bubbleColor = mine
+        ? (isDark
+            ? Theme.of(context).colorScheme.primaryContainer
+            : const Color(0xFFDCF8C6))
+        : Colors.grey.shade200;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: Row(
+        mainAxisAlignment:
+            mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Flexible(
+            child: Container(
+              constraints: BoxConstraints(maxWidth: maxW),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: bubbleColor,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(12),
+                  topRight: const Radius.circular(12),
+                  bottomLeft: Radius.circular(mine ? 12 : 4),
+                  bottomRight: Radius.circular(mine ? 4 : 12),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (msg.attachments.isNotEmpty) ...[
+                    ...msg.attachments.map(
+                      (attachment) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: MessageAttachmentView(attachment: attachment),
+                      ),
+                    ),
+                  ],
+                  if (msg.text.trim().isNotEmpty) ...[
+                    Text(msg.text),
+                    const SizedBox(height: 4),
+                  ],
+                  Text(
+                    formatTime(msg.sentAt),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Colors.grey.shade700,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

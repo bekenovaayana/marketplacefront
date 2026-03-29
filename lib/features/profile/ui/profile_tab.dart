@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:marketplace_frontend/core/errors/error_mapper.dart';
+import 'package:marketplace_frontend/core/network/api_urls.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/features/profile/state/my_active_listings_controller.dart';
 import 'package:marketplace_frontend/features/profile/state/profile_listings_nav_intent.dart';
@@ -91,6 +92,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
 
     final pstate = ref.watch(profileControllerProvider);
     final profile = pstate.profile;
+    final avatarDisplay = ApiUrls.avatarUrlForDisplay(profile?.avatarUrl);
 
     if (auth.isGuest) {
       return Scaffold(
@@ -212,11 +214,10 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
               children: [
                 CircleAvatar(
                   radius: 28,
-                  backgroundImage:
-                      ((profile?.avatarUrl ?? '').isNotEmpty)
-                          ? NetworkImage(profile!.avatarUrl!)
-                          : null,
-                  child: (profile?.avatarUrl ?? '').isEmpty
+                  backgroundImage: avatarDisplay.isNotEmpty
+                      ? NetworkImage(avatarDisplay)
+                      : null,
+                  child: avatarDisplay.isEmpty
                       ? const Icon(Icons.person_outline)
                       : null,
                 ),

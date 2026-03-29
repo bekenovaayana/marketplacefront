@@ -142,8 +142,11 @@ class _ChatsTabState extends ConsumerState<ChatsTab>
                     unreadCount: unreadCount,
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) =>
-                            ConversationDetailPage(conversationId: item.id),
+                        builder: (_) => ConversationDetailPage(
+                          conversationId: item.id,
+                          peerTitle:
+                              item.displayTitle == 'Chat' ? null : item.displayTitle,
+                        ),
                       ),
                     ),
                   );

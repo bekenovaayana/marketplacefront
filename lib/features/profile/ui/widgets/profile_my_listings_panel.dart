@@ -326,11 +326,29 @@ class ProfileMyListingsPanel extends ConsumerWidget {
               final item = s.items[i];
               return _ListingMineCard(
                 item: item,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ListingDetailPage(listingId: item.id),
-                  ),
-                ),
+                onTap: () {
+                  Navigator.of(ctx)
+                      .push<bool>(
+                        MaterialPageRoute(
+                          builder: (_) => ListingDetailPage(
+                            listingId: item.id,
+                            useOwnerPreview: true,
+                          ),
+                        ),
+                      )
+                      .then((deleted) {
+                        if (!ctx.mounted) return;
+                        if (deleted == true) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                AppStrings.of(ctx, 'listingDeleted'),
+                              ),
+                            ),
+                          );
+                        }
+                      });
+                },
               );
             },
           ),
@@ -347,7 +365,7 @@ class _ListingMineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = ApiUrls.absoluteUrl(item.cover);
+    final url = ApiUrls.networkImageUrl(item.cover);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -449,7 +467,7 @@ class _PendingPaymentsList extends StatelessWidget {
       itemBuilder: (ctx, i) {
         final p = promotions[i];
         final pv = previews[p.listingId];
-        final img = pv != null ? ApiUrls.absoluteUrl(pv.imageUrl) : '';
+        final img = pv != null ? ApiUrls.networkImageUrl(pv.imageUrl) : '';
         return Card(
           child: InkWell(
             onTap: p.listingId > 0

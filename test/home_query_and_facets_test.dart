@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marketplace_frontend/features/home/data/home_repository.dart';
 import 'package:marketplace_frontend/features/home/models/home_models.dart';
+import 'package:marketplace_frontend/features/favorites/state/favorite_stale_guard.dart';
 import 'package:marketplace_frontend/features/home/state/home_controller.dart';
 import 'package:marketplace_frontend/features/listings/models/listing_public.dart';
 
@@ -10,6 +11,12 @@ void main() {
     const query = ListingQuery(q: 'iphone', sort: 'newest');
     final map = query.toMap();
     expect(map['sort'], 'relevance');
+  });
+
+  test('listing query omits category when null or zero', () {
+    expect(const ListingQuery().toMap().containsKey('category_id'), isFalse);
+    expect(const ListingQuery().toMap().containsKey('categoryId'), isFalse);
+    expect(const ListingQuery(categoryId: 0).toMap().containsKey('category_id'), isFalse);
   });
 
   test('filter serialization includes expected params', () {
@@ -26,6 +33,7 @@ void main() {
     );
     final map = query.toMap();
     expect(map['category_id'], 3);
+    expect(map['categoryId'], 3);
     expect(map['city'], 'Bishkek');
     expect(map['min_price'], 1000);
     expect(map['max_price'], 5000);
@@ -45,7 +53,7 @@ void main() {
 
   test('pagination append behavior keeps previous items', () async {
     final repo = _FakeHomeRepository();
-    final controller = HomeController(repo);
+    final controller = HomeController(repo, FavoriteStaleGuard());
     await controller.applyFilters(const ListingQuery(q: 'a'));
     expect(controller.state.feed.length, 2);
     await controller.loadMore();
@@ -83,7 +91,7 @@ class _FakeHomeRepository extends HomeRepository {
       title: 'Item$id',
       description: '',
       price: 1,
-      currency: 'USD',
+      currency: 'KGS',
       city: 'B',
       createdAt: null,
       images: const [],

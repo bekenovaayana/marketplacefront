@@ -28,6 +28,12 @@ class AuthRepository {
     return data['access_token'] as String? ?? data['token'] as String? ?? '';
   }
 
+  static String? extractRefreshToken(Map<String, dynamic> data) {
+    final r = data['refresh_token'] ?? data['refreshToken'];
+    if (r is String && r.trim().isNotEmpty) return r.trim();
+    return null;
+  }
+
   String _extractErrorMessage(Object? data, String fallback) {
     if (data is Map<String, dynamic>) {
       final detail = data['detail'];
@@ -60,6 +66,7 @@ class AuthRepository {
       final userJson = (data['user'] as Map<String, dynamic>?) ?? <String, dynamic>{};
       final user = AuthUser.fromJson(userJson);
       await _tokenStorage.saveAccessToken(token);
+      await _tokenStorage.saveRefreshToken(extractRefreshToken(data));
       return AuthSession(accessToken: token, user: user);
     } on DioException catch (e) {
       throw ApiException(
@@ -95,8 +102,11 @@ class AuthRepository {
         return null;
       }
       return await _api.me();
-    } on DioException {
-      await _tokenStorage.clear();
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 401 || code == 403) {
+        await _tokenStorage.clear();
+      }
       return null;
     }
   }

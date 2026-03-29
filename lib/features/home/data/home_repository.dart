@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
+import 'package:marketplace_frontend/core/json/json_read.dart';
 import 'package:marketplace_frontend/features/home/models/home_models.dart';
 import 'package:marketplace_frontend/features/listings/models/listing_public.dart';
 
@@ -19,6 +20,8 @@ class ListingQuery {
     this.page = 1,
     this.pageSize = 20,
     this.includeFacets = false,
+    this.latitude,
+    this.longitude,
   });
 
   final String? q;
@@ -26,18 +29,28 @@ class ListingQuery {
   final String? city;
   final double? minPrice;
   final double? maxPrice;
+  /// API: `newest` | `price_asc` | `price_desc` | `distance` (with lat/lng).
   final String sort;
   final int page;
   final int pageSize;
   final bool includeFacets;
+  /// Required with [sort] == `distance` when API expects coordinates.
+  final double? latitude;
+  final double? longitude;
 
   bool get hasQuery => (q?.trim().isNotEmpty ?? false);
   String get effectiveSort => hasQuery ? 'relevance' : sort;
 
+  /// Backend accepts both [category_id] and [categoryId]; omit when null or invalid
+  /// so the request is not polluted (empty = no category filter).
+  int? get _categoryFilter =>
+      categoryId != null && categoryId! > 0 ? categoryId : null;
+
   Map<String, dynamic> toMap() {
+    final cat = _categoryFilter;
     return {
       'q': q,
-      'category_id': categoryId,
+      ...?(cat == null ? null : {'category_id': cat, 'categoryId': cat}),
       'city': city,
       'min_price': minPrice,
       'max_price': maxPrice,
@@ -45,6 +58,10 @@ class ListingQuery {
       'page': page,
       'page_size': pageSize,
       'include_facets': includeFacets ? true : null,
+      if (sort == 'distance' && latitude != null && longitude != null) ...{
+        'lat': latitude,
+        'lng': longitude,
+      },
     }..removeWhere((key, value) => value == null || value == '');
   }
 
@@ -58,10 +75,13 @@ class ListingQuery {
     int? page,
     int? pageSize,
     bool? includeFacets,
+    double? latitude,
+    double? longitude,
     bool clearCategory = false,
     bool clearCity = false,
     bool clearPrice = false,
     bool clearQuery = false,
+    bool clearGeo = false,
   }) {
     return ListingQuery(
       q: clearQuery ? null : (q ?? this.q),
@@ -73,6 +93,8 @@ class ListingQuery {
       page: page ?? this.page,
       pageSize: pageSize ?? this.pageSize,
       includeFacets: includeFacets ?? this.includeFacets,
+      latitude: clearGeo ? null : (latitude ?? this.latitude),
+      longitude: clearGeo ? null : (longitude ?? this.longitude),
     );
   }
 
@@ -87,6 +109,8 @@ class ListingQuery {
       page.toString(),
       pageSize.toString(),
       includeFacets.toString(),
+      latitude?.toString() ?? '',
+      longitude?.toString() ?? '',
     ].join('|');
   }
 }
@@ -114,6 +138,10 @@ class HomeRepository {
 
   final Dio _dio;
 
+  /// Первая загрузка главного экрана: **GET /home** (не сырой GET /listings).
+  /// Блоки `recommended` / `latest` приходят в ответе; лента на вкладке «Главная»
+  /// строится из них до тех пор, пока пользователь не включит поиск/фильтры
+  /// ([searchListings] → GET /listings).
   Future<HomeResponse> getHome({
     int categoriesLimit = 20,
     int itemsLimit = 20,
@@ -154,21 +182,29 @@ class HomeRepository {
   Future<ListingPageResult> searchListings(ListingQuery query) async {
     final response = await _dio.get(
       '/listings',
-      options: Options(extra: {'publicEndpoint': true}),
       queryParameters: query.toMap(),
     );
-    final data = response.data as Map<String, dynamic>;
-    final items = (data['items'] as List<dynamic>? ?? [])
-        .map((e) => ListingPublic.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final raw = response.data;
+    if (raw is! Map<String, dynamic>) {
+      return ListingPageResult(
+        items: [],
+        page: query.page,
+        totalPages: query.page,
+        totalItems: 0,
+        pageSize: query.pageSize,
+      );
+    }
+    final data = raw;
+    final items = JsonRead.listOfMap(data['items'], ListingPublic.fromJson);
+    final src = JsonRead.paginationSource(data);
     return ListingPageResult(
       items: items,
-      page: (data['page'] as num?)?.toInt() ?? query.page,
-      totalPages: (data['total_pages'] as num?)?.toInt() ?? query.page,
-      totalItems: (data['total_items'] as num?)?.toInt() ?? items.length,
-      pageSize: (data['page_size'] as num?)?.toInt() ?? query.pageSize,
+      page: JsonRead.intVal(src['page'], query.page),
+      totalPages: JsonRead.intVal(src['total_pages'], query.page),
+      totalItems: JsonRead.intVal(src['total_items'], items.length),
+      pageSize: JsonRead.intVal(src['page_size'], query.pageSize),
       facets: data.containsKey('facets')
-          ? ListingsFacets.fromJson(data['facets'] as Map<String, dynamic>?)
+          ? ListingsFacets.fromJson(JsonRead.map(data['facets']))
           : null,
     );
   }

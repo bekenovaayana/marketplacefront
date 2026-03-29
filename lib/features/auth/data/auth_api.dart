@@ -22,6 +22,7 @@ class AuthApi {
         'email': email,
         'password': password,
       },
+      options: Options(extra: {'publicEndpoint': true}),
     );
     return response.data as Map<String, dynamic>;
   }
@@ -38,12 +39,23 @@ class AuthApi {
         'email': email,
         'password': password,
       },
+      options: Options(extra: {'publicEndpoint': true}),
     );
     return AuthUser.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// [GET /auth/me] and [GET /users/me] return the same payload; prefer /auth/me,
+  /// fall back to /users/me if the server is older (404).
   Future<AuthUser> me() async {
-    final response = await _dio.get('/auth/me');
-    return AuthUser.fromJson(response.data as Map<String, dynamic>);
+    try {
+      final response = await _dio.get('/auth/me');
+      return AuthUser.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        final response = await _dio.get('/users/me');
+        return AuthUser.fromJson(response.data as Map<String, dynamic>);
+      }
+      rethrow;
+    }
   }
 }

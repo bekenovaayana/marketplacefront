@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:marketplace_frontend/core/config/env.dart';
 import 'package:marketplace_frontend/core/errors/error_mapper.dart';
 import 'package:marketplace_frontend/features/favorites/state/favorites_controller.dart';
 import 'package:marketplace_frontend/features/home/data/home_repository.dart';
@@ -100,11 +102,89 @@ class _HomeTabState extends ConsumerState<HomeTab>
             ],
             if (state.error != null)
               ListTile(
+                isThreeLine: true,
                 title: Text(ErrorMapper.friendly(state.error)),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t('homeErrorHint'),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: 8),
+                      SelectableText(
+                        'API_BASE_URL → ${Env.baseUrl}',
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
                 trailing: TextButton(
                   onPressed: () =>
                       ref.read(homeControllerProvider.notifier).loadInitial(),
                   child: Text(t('retry')),
+                ),
+              ),
+            if (!state.inSearchMode &&
+                !state.isLoading &&
+                state.error == null &&
+                state.recommended.isEmpty &&
+                state.latest.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Card(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                t('homeFeedEmptyTitle'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          t('homeFeedEmptyHint'),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (kDebugMode) ...[
+                          const SizedBox(height: 10),
+                          SelectableText(
+                            'GET /home ← ${Env.baseUrl}/home',
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             if (!state.inSearchMode) ...[

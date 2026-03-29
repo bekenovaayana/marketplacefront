@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,9 +10,9 @@ import 'package:marketplace_frontend/features/posting/data/posting_models.dart';
 import 'package:marketplace_frontend/features/posting/ui/location_pick_result.dart';
 import 'package:marketplace_frontend/features/posting/ui/location_picker_screen.dart';
 import 'package:marketplace_frontend/features/posting/state/posting_controller.dart';
+import 'package:marketplace_frontend/features/posting/state/posting_ui_slice.dart';
 import 'package:marketplace_frontend/features/posting/ui/widgets/create_flow_view.dart';
 import 'package:marketplace_frontend/features/profile/state/my_active_listings_controller.dart';
-import 'package:marketplace_frontend/features/profile/state/profile_listings_nav_intent.dart';
 import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
 import 'package:marketplace_frontend/shared/widgets/app_notification_overlay.dart';
 
@@ -58,33 +59,29 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
   }
 
   Future<void> _onSaveDraft(PostingController c) async {
+    _onFieldChanged(c);
     await c.saveDraftNow();
     if (!mounted) return;
     final err = ref.read(postingControllerProvider).error;
     if (err != null) return;
     final catId = ref.read(postingControllerProvider).payload.categoryId?.toInt();
-    ref.read(profileListingsNavIntentProvider.notifier).setIntent(
-          ProfileListingsNavIntent(
-            tab: ProfileListingsTab.draft,
-            filterCategoryId: catId,
-            nonce: DateTime.now().millisecondsSinceEpoch,
-          ),
+    await ref.read(myActiveListingsProvider.notifier).syncAfterDraftSaved(
+          listingCategoryId: catId,
         );
+    if (!mounted) return;
     context.go('/app?tab=4');
   }
 
   Future<bool> _onPublish(PostingController c) async {
+    _onFieldChanged(c);
     final catId = ref.read(postingControllerProvider).payload.categoryId?.toInt();
     final ok = await c.publish();
     if (!mounted) return ok;
     if (ok) {
-      ref.read(profileListingsNavIntentProvider.notifier).setIntent(
-            ProfileListingsNavIntent(
-              tab: ProfileListingsTab.active,
-              filterCategoryId: catId,
-              nonce: DateTime.now().millisecondsSinceEpoch,
-            ),
+      await ref.read(myActiveListingsProvider.notifier).syncAfterPublish(
+            listingCategoryId: catId,
           );
+      if (!mounted) return ok;
       context.go('/app?tab=4');
     }
     return ok;
@@ -116,19 +113,78 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
   }
 
   Future<void> _pickPhotos(PostingController c) async {
-    final picked = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      type: FileType.custom,
-      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'webm', 'mov'],
+    if (!mounted) return;
+    final t = AppStrings.of;
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                t(context, 'postingMediaPickTitle'),
+                style: Theme.of(ctx).textTheme.titleSmall,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: Text(t(context, 'postingMediaFromFiles')),
+              onTap: () => Navigator.pop(ctx, 'files'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text(t(context, 'postingMediaFromGallery')),
+              onTap: () => Navigator.pop(ctx, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: Text(t(context, 'postingMediaFromCamera')),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
+          ],
+        ),
+      ),
     );
-    if (picked != null) {
-      final files = picked.files
-          .where((f) => (f.path ?? '').isNotEmpty)
-          .map((f) => XFile(f.path!))
-          .toList();
-      if (files.isNotEmpty) {
-        await c.addPhotos(files);
+    if (!mounted || source == null) return;
+
+    final picker = ImagePicker();
+    List<XFile> files = [];
+
+    if (source == 'files') {
+      final picked = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: const [
+          'jpg',
+          'jpeg',
+          'png',
+          'webp',
+          'heic',
+          'heif',
+          'mp4',
+          'webm',
+          'mov',
+        ],
+      );
+      if (picked != null) {
+        files = picked.files
+            .where((f) => (f.path ?? '').isNotEmpty)
+            .map((f) => XFile(f.path!))
+            .toList();
       }
+    } else if (source == 'gallery') {
+      files = await picker.pickMultiImage();
+    } else if (source == 'camera') {
+      final one = await picker.pickImage(source: ImageSource.camera);
+      if (one != null) files = [one];
+    }
+
+    if (files.isNotEmpty) {
+      await c.addPhotos(files);
     }
   }
 
@@ -136,7 +192,7 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
       if (!mounted) return;
-      showAppNotification(context, 'Location service is disabled');
+      showAppNotification(context, AppStrings.of(context, 'locationServiceDisabled'));
       return;
     }
     var permission = await Geolocator.checkPermission();
@@ -146,11 +202,31 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
       if (!mounted) return;
-      showAppNotification(context, 'Location permission denied');
+      showAppNotification(context, AppStrings.of(context, 'locationPermissionDenied'));
       return;
     }
     final pos = await Geolocator.getCurrentPosition();
-    await c.setCurrentLocation(lat: pos.latitude, lng: pos.longitude);
+    var city = '';
+    try {
+      final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+      if (marks.isNotEmpty) {
+        final p = marks.first;
+        final loc = p.locality?.trim() ?? '';
+        city = loc.isNotEmpty
+            ? loc
+            : (p.subAdministrativeArea ?? p.administrativeArea ?? '').trim();
+      }
+    } catch (_) {}
+    _lat.text = pos.latitude.toString();
+    _lng.text = pos.longitude.toString();
+    if (city.isNotEmpty) {
+      _city.text = city;
+    }
+    c.patchPriceLocation(
+      city: _city.text,
+      latText: _lat.text,
+      lngText: _lng.text,
+    );
   }
 
   Future<void> _pickLocationOnMap(PostingController c) async {
@@ -188,13 +264,14 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
     }
 
     ref.listen<PostingState>(postingControllerProvider, (prev, next) {
+      if (prev?.hydrateGeneration == next.hydrateGeneration) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _syncControllers(next.payload);
       });
     });
 
-    final state = ref.watch(postingControllerProvider);
+    final ui = ref.watch(postingControllerProvider.select(PostingFlowUiSlice.from));
     final c = ref.read(postingControllerProvider.notifier);
 
     final saveLabel = AppStrings.of(context, 'profileSaveDraft');
@@ -208,7 +285,7 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
         ),
         actions: [
           TextButton(
-            onPressed: state.isSavingDraft || state.isLoading || state.draftId == null
+            onPressed: ui.isSavingDraft || ui.isLoading || ui.draftId == null
                 ? null
                 : () => _onSaveDraft(c),
             child: Text(saveLabel),
@@ -217,12 +294,12 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
       ),
       body: Column(
         children: [
-          if (state.isSavingDraft) const LinearProgressIndicator(minHeight: 2),
+          if (ui.isSavingDraft) const LinearProgressIndicator(minHeight: 2),
           Expanded(
-            child: state.isLoading
+            child: ui.isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : CreateFlowView(
-                    state: state,
+                    ui: ui,
                     titleController: _title,
                     descriptionController: _description,
                     priceController: _price,
@@ -237,12 +314,16 @@ class _PostListingPageState extends ConsumerState<PostListingPage> {
                     onPickLocationOnMap: () => _pickLocationOnMap(c),
                     onRemovePhoto: (index) => c.removePhoto(index),
                     onReorderPhoto: (o, n) => c.reorderPhotos(o, n),
-                    onLoadPreview: c.loadPreview,
+                    onLoadPreview: () async {
+                      _onFieldChanged(c);
+                      await c.loadPreview();
+                    },
                     onPublish: () => _onPublish(c),
                     onNextStep: () =>
-                        c.setStep((state.currentStep + 1).clamp(0, 3)),
+                        c.setStep((ui.currentStep + 1).clamp(0, 3)),
                     onBackStep: () =>
-                        c.setStep((state.currentStep - 1).clamp(0, 3)),
+                        c.setStep((ui.currentStep - 1).clamp(0, 3)),
+                    onJumpToStep: c.setStep,
                   ),
           ),
         ],

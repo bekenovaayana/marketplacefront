@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:marketplace_frontend/core/network/api_urls.dart';
+import 'package:marketplace_frontend/features/listings/ui/listing_detail_page.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_state.dart';
 import 'package:marketplace_frontend/features/posting/ui/location_pick_result.dart';
 import 'package:marketplace_frontend/features/posting/ui/location_picker_screen.dart';
 import 'package:marketplace_frontend/features/posting/state/posting_controller.dart';
+import 'package:marketplace_frontend/features/posting/state/posting_ui_slice.dart';
 import 'package:marketplace_frontend/features/posting/data/posting_models.dart';
 import 'package:marketplace_frontend/features/posting/ui/widgets/create_flow_view.dart';
+import 'package:marketplace_frontend/features/profile/state/my_active_listings_controller.dart';
 import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
 import 'package:marketplace_frontend/shared/widgets/app_notification_overlay.dart';
 
@@ -110,13 +115,14 @@ class _PostingTabState extends ConsumerState<PostingTab>
     }
 
     ref.listen<PostingState>(postingControllerProvider, (prev, next) {
+      if (prev?.hydrateGeneration == next.hydrateGeneration) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _syncControllers(next.payload);
       });
     });
 
-    final state = ref.watch(postingControllerProvider);
+    final ui = ref.watch(postingControllerProvider.select(PostingFlowUiSlice.from));
     final c = ref.read(postingControllerProvider.notifier);
     String t(String key) => AppStrings.of(context, key);
 
@@ -139,11 +145,11 @@ class _PostingTabState extends ConsumerState<PostingTab>
               ),
             ),
           ),
-          if (state.isSavingDraft) const LinearProgressIndicator(minHeight: 2),
+          if (ui.isSavingDraft) const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: _modeIndex == 0
                 ? CreateFlowView(
-                    state: state,
+                    ui: ui,
                     titleController: _title,
                     descriptionController: _description,
                     priceController: _price,
@@ -158,25 +164,73 @@ class _PostingTabState extends ConsumerState<PostingTab>
                     onPickLocationOnMap: () => _pickLocationOnMap(c),
                     onRemovePhoto: (index) => c.removePhoto(index),
                     onReorderPhoto: (o, n) => c.reorderPhotos(o, n),
-                    onLoadPreview: c.loadPreview,
-                    onPublish: c.publish,
+                    onLoadPreview: () async {
+                      _onFieldChanged(c);
+                      await c.loadPreview();
+                    },
+                    onPublish: () async {
+                      _onFieldChanged(c);
+                      final catId =
+                          ref.read(postingControllerProvider).payload.categoryId?.toInt();
+                      final ok = await c.publish();
+                      if (ok && mounted) {
+                        await ref
+                            .read(myActiveListingsProvider.notifier)
+                            .syncAfterPublish(listingCategoryId: catId);
+                      }
+                      return ok;
+                    },
                     onNextStep: () =>
-                        c.setStep((state.currentStep + 1).clamp(0, 3)),
+                        c.setStep((ui.currentStep + 1).clamp(0, 3)),
                     onBackStep: () =>
-                        c.setStep((state.currentStep - 1).clamp(0, 3)),
+                        c.setStep((ui.currentStep - 1).clamp(0, 3)),
+                    onJumpToStep: c.setStep,
                   )
                 : _MyListingsView(
                     t: t,
-                    state: state,
+                    flowUi: ui,
+                    onOpenListingDetail: (id) {
+                      Navigator.of(context)
+                          .push<bool>(
+                            MaterialPageRoute(
+                              builder: (_) => ListingDetailPage(
+                                listingId: id,
+                                useOwnerPreview: true,
+                              ),
+                            ),
+                          )
+                          .then((deleted) {
+                            if (!context.mounted) return;
+                            if (deleted == true) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(t('listingDeleted')),
+                                ),
+                              );
+                            }
+                          });
+                    },
                     onStatus: (status) => c.loadMyListings(status: status),
                     onResumeDraft: (id) async {
                       await c.resumeDraft(id);
                       if (mounted) setState(() => _modeIndex = 0);
                     },
-                    onUnpublish: c.unpublish,
+                    onUnpublish: (id) async {
+                      await c.unpublish(id);
+                      if (mounted) {
+                        await ref.read(myActiveListingsProvider.notifier).refresh();
+                      }
+                    },
                     onRepublish: (id) async {
                       await c.resumeDraft(id);
-                      await c.publish();
+                      final catId =
+                          ref.read(postingControllerProvider).payload.categoryId?.toInt();
+                      final ok = await c.publish();
+                      if (mounted && ok) {
+                        await ref
+                            .read(myActiveListingsProvider.notifier)
+                            .syncAfterPublish(listingCategoryId: catId);
+                      }
                     },
                   ),
           ),
@@ -211,19 +265,78 @@ class _PostingTabState extends ConsumerState<PostingTab>
   }
 
   Future<void> _pickPhotos(PostingController c) async {
-    final picked = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      type: FileType.custom,
-      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'webm', 'mov'],
+    if (!mounted) return;
+    final t = AppStrings.of;
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                t(context, 'postingMediaPickTitle'),
+                style: Theme.of(ctx).textTheme.titleSmall,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: Text(t(context, 'postingMediaFromFiles')),
+              onTap: () => Navigator.pop(ctx, 'files'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text(t(context, 'postingMediaFromGallery')),
+              onTap: () => Navigator.pop(ctx, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: Text(t(context, 'postingMediaFromCamera')),
+              onTap: () => Navigator.pop(ctx, 'camera'),
+            ),
+          ],
+        ),
+      ),
     );
-    if (picked != null) {
-      final files = picked.files
-          .where((f) => (f.path ?? '').isNotEmpty)
-          .map((f) => XFile(f.path!))
-          .toList();
-      if (files.isNotEmpty) {
-        await c.addPhotos(files);
+    if (!mounted || source == null) return;
+
+    final picker = ImagePicker();
+    List<XFile> files = [];
+
+    if (source == 'files') {
+      final picked = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: const [
+          'jpg',
+          'jpeg',
+          'png',
+          'webp',
+          'heic',
+          'heif',
+          'mp4',
+          'webm',
+          'mov',
+        ],
+      );
+      if (picked != null) {
+        files = picked.files
+            .where((f) => (f.path ?? '').isNotEmpty)
+            .map((f) => XFile(f.path!))
+            .toList();
       }
+    } else if (source == 'gallery') {
+      files = await picker.pickMultiImage();
+    } else if (source == 'camera') {
+      final one = await picker.pickImage(source: ImageSource.camera);
+      if (one != null) files = [one];
+    }
+
+    if (files.isNotEmpty) {
+      await c.addPhotos(files);
     }
   }
 
@@ -247,7 +360,27 @@ class _PostingTabState extends ConsumerState<PostingTab>
       return;
     }
     final pos = await Geolocator.getCurrentPosition();
-    await c.setCurrentLocation(lat: pos.latitude, lng: pos.longitude);
+    var city = '';
+    try {
+      final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+      if (marks.isNotEmpty) {
+        final p = marks.first;
+        final loc = p.locality?.trim() ?? '';
+        city = loc.isNotEmpty
+            ? loc
+            : (p.subAdministrativeArea ?? p.administrativeArea ?? '').trim();
+      }
+    } catch (_) {}
+    _lat.text = pos.latitude.toString();
+    _lng.text = pos.longitude.toString();
+    if (city.isNotEmpty) {
+      _city.text = city;
+    }
+    c.patchPriceLocation(
+      city: _city.text,
+      latText: _lat.text,
+      lngText: _lng.text,
+    );
   }
 
   Future<void> _pickLocationOnMap(PostingController c) async {
@@ -278,7 +411,8 @@ class _PostingTabState extends ConsumerState<PostingTab>
 class _MyListingsView extends StatelessWidget {
   const _MyListingsView({
     required this.t,
-    required this.state,
+    required this.flowUi,
+    required this.onOpenListingDetail,
     required this.onStatus,
     required this.onResumeDraft,
     required this.onUnpublish,
@@ -286,11 +420,12 @@ class _MyListingsView extends StatelessWidget {
   });
 
   final String Function(String key) t;
-  final PostingState state;
+  final PostingFlowUiSlice flowUi;
+  final ValueChanged<int> onOpenListingDetail;
   final ValueChanged<String> onStatus;
   final ValueChanged<int> onResumeDraft;
-  final ValueChanged<int> onUnpublish;
-  final ValueChanged<int> onRepublish;
+  final Future<void> Function(int) onUnpublish;
+  final Future<void> Function(int) onRepublish;
 
   @override
   Widget build(BuildContext context) {
@@ -317,7 +452,7 @@ class _MyListingsView extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: statuses.map((status) {
-              final selected = state.myStatus == status;
+              final selected = flowUi.myStatus == status;
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
@@ -330,19 +465,21 @@ class _MyListingsView extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: state.isLoading
+          child: flowUi.isLoading
               ? const Center(child: CircularProgressIndicator())
               : ListView.builder(
-                  itemCount: state.myListings.length,
+                  itemCount: flowUi.myListings.length,
                   itemBuilder: (context, index) {
-                    final item = state.myListings[index];
+                    final item = flowUi.myListings[index];
+                    final coverUrl = ApiUrls.networkImageUrl(item.cover);
                     return ListTile(
-                      leading: item.cover.isEmpty
+                      onTap: () => onOpenListingDetail(item.id),
+                      leading: coverUrl.isEmpty
                           ? const CircleAvatar(
                               child: Icon(Icons.inventory_2_outlined),
                             )
                           : CircleAvatar(
-                              backgroundImage: NetworkImage(item.cover),
+                              backgroundImage: NetworkImage(coverUrl),
                             ),
                       title: Text(item.title),
                       subtitle: Text(

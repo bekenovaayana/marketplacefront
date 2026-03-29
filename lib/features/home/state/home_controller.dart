@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:marketplace_frontend/features/favorites/state/favorite_stale_guard.dart';
 import 'package:marketplace_frontend/features/home/data/home_repository.dart';
 import 'package:marketplace_frontend/features/home/models/home_models.dart';
 import 'package:marketplace_frontend/features/listings/models/listing_public.dart';
@@ -81,17 +82,24 @@ class HomeState {
 }
 
 final homeControllerProvider = StateNotifierProvider<HomeController, HomeState>((ref) {
-  return HomeController(ref.watch(homeRepositoryProvider));
+  return HomeController(
+    ref.watch(homeRepositoryProvider),
+    ref.read(favoriteStaleGuardProvider.notifier),
+  );
 });
 
 class HomeController extends StateNotifier<HomeState> {
-  HomeController(this._repository) : super(const HomeState());
+  HomeController(this._repository, this._favoriteStaleGuard) : super(const HomeState());
 
   final HomeRepository _repository;
+  final FavoriteStaleGuard _favoriteStaleGuard;
   Timer? _debounce;
   int _requestNonce = 0;
   final Map<String, ListingPageResult> _cache = {};
 
+  /// Стартовая загрузка вкладки «Главная»: [HomeRepository.getHome] → **GET /home**.
+  /// В состояние попадают `recommended` и `latest`; `feed` копируется из `latest`
+  /// до перехода в режим поиска ([_runSearch] использует **GET /listings**).
   Future<void> loadInitial() async {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
@@ -99,12 +107,15 @@ class HomeController extends StateNotifier<HomeState> {
         city: state.query.city,
         categoryId: state.query.categoryId,
       );
+      final recommended =
+          _favoriteStaleGuard.mergeListingPublicList(home.recommended);
+      final latest = _favoriteStaleGuard.mergeListingPublicList(home.latest);
       state = state.copyWith(
         isLoading: false,
         categories: home.categories,
-        recommended: home.recommended,
-        latest: home.latest,
-        feed: home.latest,
+        recommended: recommended,
+        latest: latest,
+        feed: latest,
         page: 1,
         totalPages: 1,
         totalItems: home.latest.length,
@@ -167,9 +178,10 @@ class HomeController extends StateNotifier<HomeState> {
       if (requestId != _requestNonce) {
         return;
       }
+      final feed = _favoriteStaleGuard.mergeListingPublicList(result.items);
       state = state.copyWith(
         isLoading: false,
-        feed: result.items,
+        feed: feed,
         page: result.page,
         totalPages: result.totalPages,
         totalItems: result.totalItems,
@@ -193,10 +205,11 @@ class HomeController extends StateNotifier<HomeState> {
     try {
       final nextQuery = state.query.copyWith(page: state.page + 1);
       final result = await _repository.searchListings(nextQuery);
+      final more = _favoriteStaleGuard.mergeListingPublicList(result.items);
       state = state.copyWith(
         isLoadingMore: false,
         query: nextQuery,
-        feed: [...state.feed, ...result.items],
+        feed: [...state.feed, ...more],
         page: result.page,
         totalPages: result.totalPages,
         totalItems: result.totalItems,
@@ -207,10 +220,25 @@ class HomeController extends StateNotifier<HomeState> {
   }
 
   void syncFavorite(int listingId, bool isFavorite) {
+    _cache.clear();
+    if (isFavorite) {
+      _favoriteStaleGuard.markExpectFavoriteTrue(listingId);
+    } else {
+      _favoriteStaleGuard.clearExpectFavoriteTrue(listingId);
+    }
+    ListingPublic mapItem(ListingPublic item) {
+      if (item.id != listingId) return item;
+      if (isFavorite == item.isFavorite) return item;
+      final delta = isFavorite ? 1 : -1;
+      final next = (item.favoritesCount + delta).clamp(0, 999999999);
+      return item.copyWith(
+        isFavorite: isFavorite,
+        favoritesCount: next,
+      );
+    }
+
     List<ListingPublic> update(List<ListingPublic> input) {
-      return input
-          .map((item) => item.id == listingId ? item.copyWith(isFavorite: isFavorite) : item)
-          .toList();
+      return input.map(mapItem).toList();
     }
 
     state = state.copyWith(

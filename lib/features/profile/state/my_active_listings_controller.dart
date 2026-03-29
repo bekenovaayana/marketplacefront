@@ -101,6 +101,9 @@ class MyActiveListingsController extends StateNotifier<ProfileMyListingsState> {
   final PostingRepository _repo;
   final PromotionsApi _promotionsApi;
 
+  /// Ignores stale HTTP responses when the user changes tab/filter/sort quickly.
+  int _fetchGeneration = 0;
+
   Future<void> ensureCategories() async {
     if (state.apiCategories.isNotEmpty) return;
     try {
@@ -118,6 +121,34 @@ class MyActiveListingsController extends StateNotifier<ProfileMyListingsState> {
   Future<void> setTab(ProfileListingsTab tab) async {
     state = state.copyWith(tab: tab, clearError: true);
     await refresh();
+  }
+
+  /// After publishing: switch to Active and refetch (avoids refresh while tab was still Draft).
+  Future<void> syncAfterPublish({int? listingCategoryId}) async {
+    await ensureCategories();
+    var cat = listingCategoryId;
+    if (cat != null) {
+      final matches = state.resolvedChips.any(
+        (c) => c.categoryId == cat && c.isMatched,
+      );
+      if (!matches) cat = null;
+    }
+    selectCategoryChip(cat);
+    await setTab(ProfileListingsTab.active);
+  }
+
+  /// After saving a draft from the posting flow.
+  Future<void> syncAfterDraftSaved({int? listingCategoryId}) async {
+    await ensureCategories();
+    var cat = listingCategoryId;
+    if (cat != null) {
+      final matches = state.resolvedChips.any(
+        (c) => c.categoryId == cat && c.isMatched,
+      );
+      if (!matches) cat = null;
+    }
+    selectCategoryChip(cat);
+    await setTab(ProfileListingsTab.draft);
   }
 
   void selectCategoryChip(int? id) {
@@ -145,13 +176,16 @@ class MyActiveListingsController extends StateNotifier<ProfileMyListingsState> {
   }
 
   Future<void> refresh() async {
+    final gen = ++_fetchGeneration;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       await ensureCategories();
+      if (gen != _fetchGeneration) return;
       if (state.tab == ProfileListingsTab.pendingPayment) {
         final promos = await _promotionsApi.fetchPromotions(
           status: 'pending_payment',
         );
+        if (gen != _fetchGeneration) return;
         final previews = <int, ListingPreviewCard?>{};
         for (final p in promos) {
           if (p.listingId <= 0) continue;
@@ -165,6 +199,7 @@ class MyActiveListingsController extends StateNotifier<ProfileMyListingsState> {
             previews[p.listingId] = null;
           }
         }
+        if (gen != _fetchGeneration) return;
         state = state.copyWith(
           isLoading: false,
           items: const [],
@@ -181,6 +216,7 @@ class MyActiveListingsController extends StateNotifier<ProfileMyListingsState> {
         page: 1,
         pageSize: 40,
       );
+      if (gen != _fetchGeneration) return;
       state = state.copyWith(
         isLoading: false,
         items: items,
@@ -188,6 +224,7 @@ class MyActiveListingsController extends StateNotifier<ProfileMyListingsState> {
         pendingPreviews: const {},
       );
     } catch (e) {
+      if (gen != _fetchGeneration) return;
       state = state.copyWith(isLoading: false, error: e);
     }
   }

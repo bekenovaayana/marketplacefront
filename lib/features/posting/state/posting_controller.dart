@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:marketplace_frontend/core/constants/listing_currency.dart';
 import 'package:marketplace_frontend/core/errors/api_exception.dart';
 import 'package:marketplace_frontend/core/errors/api_field_errors.dart';
 import 'package:marketplace_frontend/features/home/models/home_models.dart';
@@ -15,9 +18,11 @@ class PostingState {
     this.myListings = const [],
     this.myStatus = 'draft',
     this.currentStep = 0,
+    this.hydrateGeneration = 0,
     this.isLoading = false,
     this.isSavingDraft = false,
     this.isPublishing = false,
+    this.mediaUploadFraction,
     this.draftId,
     this.payload = const PostingDraftPayload(),
     this.preview,
@@ -30,9 +35,13 @@ class PostingState {
   final List<ListingMine> myListings;
   final String myStatus;
   final int currentStep;
+  /// Bumps when server/local draft is applied so UI can sync controllers once.
+  final int hydrateGeneration;
   final bool isLoading;
   final bool isSavingDraft;
   final bool isPublishing;
+  /// 0.0–1.0 while uploading media batch; null when idle.
+  final double? mediaUploadFraction;
   final int? draftId;
   final PostingDraftPayload payload;
   final Map<String, dynamic>? preview;
@@ -45,9 +54,11 @@ class PostingState {
     List<ListingMine>? myListings,
     String? myStatus,
     int? currentStep,
+    int? hydrateGeneration,
     bool? isLoading,
     bool? isSavingDraft,
     bool? isPublishing,
+    double? mediaUploadFraction,
     int? draftId,
     PostingDraftPayload? payload,
     Map<String, dynamic>? preview,
@@ -57,15 +68,20 @@ class PostingState {
     bool clearError = false,
     bool clearMessage = false,
     bool clearDraftId = false,
+    bool clearMediaUploadFraction = false,
   }) {
     return PostingState(
       categories: categories ?? this.categories,
       myListings: myListings ?? this.myListings,
       myStatus: myStatus ?? this.myStatus,
       currentStep: currentStep ?? this.currentStep,
+      hydrateGeneration: hydrateGeneration ?? this.hydrateGeneration,
       isLoading: isLoading ?? this.isLoading,
       isSavingDraft: isSavingDraft ?? this.isSavingDraft,
       isPublishing: isPublishing ?? this.isPublishing,
+      mediaUploadFraction: clearMediaUploadFraction
+          ? null
+          : (mediaUploadFraction ?? this.mediaUploadFraction),
       draftId: clearDraftId ? null : (draftId ?? this.draftId),
       payload: payload ?? this.payload,
       preview: preview ?? this.preview,
@@ -95,16 +111,8 @@ class PostingController extends StateNotifier<PostingState> {
   final PostingRepository _repository;
   final PostingLocalStore _localStore;
   Timer? _autosaveDebounce;
+  int _myListingsFetchGeneration = 0;
 
-  static const _allowedMime = {
-    'image/jpeg',
-    'image/jpg',
-    'image/png',
-    'image/webp',
-    'video/mp4',
-    'video/webm',
-    'video/quicktime',
-  };
   static const _maxSize = 67108864;
   static const _maxImages = 10;
 
@@ -126,10 +134,13 @@ class PostingController extends StateNotifier<PostingState> {
       return;
     }
 
+    final gen = ++_myListingsFetchGeneration;
     try {
       final items = await _repository.myListings(status: state.myStatus);
+      if (gen != _myListingsFetchGeneration) return;
       state = state.copyWith(myListings: items);
     } catch (_) {
+      if (gen != _myListingsFetchGeneration) return;
       // Don't block the create flow if /listings/me fails (guest race, expired token, etc.).
       // User can open «My listings» to retry via loadMyListings.
     }
@@ -141,12 +152,12 @@ class PostingController extends StateNotifier<PostingState> {
     await _localStore.clearDraftId();
     state = const PostingState(
       isLoading: true,
-      payload: PostingDraftPayload(currency: 'USD'),
+      payload: PostingDraftPayload(),
     );
     try {
       final results = await Future.wait<Object>([
         _repository.categories(),
-        _repository.createDraft(const PostingDraftPayload(currency: 'USD')),
+        _repository.createDraft(const PostingDraftPayload()),
       ]);
       final cats = results.first as List<HomeCategory>;
       final id = results.last as int;
@@ -155,9 +166,10 @@ class PostingController extends StateNotifier<PostingState> {
         isLoading: false,
         categories: cats,
         draftId: id,
-        payload: const PostingDraftPayload(currency: 'USD'),
+        payload: const PostingDraftPayload(),
         currentStep: 0,
         clearError: true,
+        hydrateGeneration: state.hydrateGeneration + 1,
       );
     } on ApiFieldErrorsException catch (e) {
       _applyFieldErrors(
@@ -170,17 +182,33 @@ class PostingController extends StateNotifier<PostingState> {
   }
 
   Future<void> loadMyListings({required String status}) async {
+    final gen = ++_myListingsFetchGeneration;
     state = state.copyWith(isLoading: true, myStatus: status, clearError: true);
     try {
       final items = await _repository.myListings(status: status);
+      if (gen != _myListingsFetchGeneration) return;
       state = state.copyWith(isLoading: false, myListings: items);
     } on ApiFieldErrorsException catch (e) {
+      if (gen != _myListingsFetchGeneration) return;
       _applyFieldErrors(
         e,
         isLoading: false,
       );
     } catch (e) {
+      if (gen != _myListingsFetchGeneration) return;
       state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
+  /// Refetch [myListings] for the current tab without toggling [isLoading] (e.g. after delete elsewhere).
+  Future<void> refreshMyListingsOnly() async {
+    final gen = ++_myListingsFetchGeneration;
+    try {
+      final items = await _repository.myListings(status: state.myStatus);
+      if (gen != _myListingsFetchGeneration) return;
+      state = state.copyWith(myListings: items);
+    } catch (_) {
+      if (gen != _myListingsFetchGeneration) return;
     }
   }
 
@@ -241,46 +269,25 @@ class PostingController extends StateNotifier<PostingState> {
     }
     for (final file in files) {
       final size = await file.length();
-      final mime = (file.mimeType ?? '').toLowerCase();
       if (size > _maxSize) {
-        state = state.copyWith(error: 'Image is too large. Max size is 64MB');
-        return;
-      }
-      if (!_allowedMime.contains(mime)) {
-        final ext = file.name.toLowerCase();
-        final isKnownExt = ext.endsWith('.jpg') ||
-            ext.endsWith('.jpeg') ||
-            ext.endsWith('.png') ||
-            ext.endsWith('.webp') ||
-            ext.endsWith('.mp4') ||
-            ext.endsWith('.webm') ||
-            ext.endsWith('.mov');
-        if (!isKnownExt) {
-          state = state.copyWith(error: 'Only jpg, png, webp, mp4, webm and mov are supported');
-          return;
-        }
-      }
-      if (!_allowedMime.contains(mime) && (file.mimeType ?? '').isNotEmpty) {
-        state = state.copyWith(error: 'Only jpg, png, webp, mp4, webm and mov are supported');
+        state = state.copyWith(error: 'File is too large. Max size is 64MB');
         return;
       }
     }
 
-    state = state.copyWith(isSavingDraft: true, clearError: true);
+    state = state.copyWith(
+      isSavingDraft: true,
+      clearError: true,
+      clearMediaUploadFraction: true,
+    );
     try {
       final uploaded = <PostingImage>[...state.payload.images];
-      for (final file in files) {
+      final total = files.length;
+      for (var i = 0; i < files.length; i++) {
+        state = state.copyWith(mediaUploadFraction: (i + 1) / total);
+        final prepared = await _maybeCompressForUpload(files[i]);
         await _ensureDraftId();
-        final dynamic repo = _repository;
-        PostingImage media;
-        try {
-          media = await repo.uploadListingMedia(
-            listingId: state.draftId!,
-            file: file,
-          ) as PostingImage;
-        } catch (_) {
-          media = await _repository.uploadImage(file);
-        }
+        final media = await _uploadImageWithRetries(prepared);
         uploaded.add(PostingImage(
           url: media.url,
           sortOrder: uploaded.length,
@@ -289,6 +296,7 @@ class PostingController extends StateNotifier<PostingState> {
       final normalized = _normalizeSort(uploaded);
       state = state.copyWith(
         isSavingDraft: false,
+        clearMediaUploadFraction: true,
         payload: state.payload.copyWith(images: normalized),
       );
       await _repository.updateDraft(state.draftId!, state.payload.copyWith(images: normalized));
@@ -297,10 +305,70 @@ class PostingController extends StateNotifier<PostingState> {
         e,
         isSavingDraft: false,
       );
+      state = state.copyWith(clearMediaUploadFraction: true);
     } on ApiException catch (e) {
-      state = state.copyWith(isSavingDraft: false, error: e.message);
+      state = state.copyWith(
+        isSavingDraft: false,
+        error: e.message,
+        clearMediaUploadFraction: true,
+      );
     } catch (e) {
-      state = state.copyWith(isSavingDraft: false, error: e.toString());
+      state = state.copyWith(
+        isSavingDraft: false,
+        error: e.toString(),
+        clearMediaUploadFraction: true,
+      );
+    }
+  }
+
+  Future<PostingImage> _uploadImageWithRetries(XFile file) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+      }
+      try {
+        return await _repository.uploadImage(file);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    final err = lastError;
+    if (err != null) {
+      throw err;
+    }
+    throw StateError('Upload failed');
+  }
+
+  static Future<XFile> _maybeCompressForUpload(XFile file) async {
+    final mime = (file.mimeType ?? '').toLowerCase();
+    if (mime.startsWith('video/')) return file;
+    final pathLower = file.path.toLowerCase();
+    final looksImage = mime.startsWith('image/') ||
+        pathLower.endsWith('.jpg') ||
+        pathLower.endsWith('.jpeg') ||
+        pathLower.endsWith('.png') ||
+        pathLower.endsWith('.webp') ||
+        pathLower.endsWith('.heic') ||
+        pathLower.endsWith('.heif');
+    if (!looksImage) return file;
+    try {
+      final tmp = await getTemporaryDirectory();
+      final outPath = p.join(
+        tmp.path,
+        'post_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      final out = await FlutterImageCompress.compressAndGetFile(
+        file.path,
+        outPath,
+        quality: 85,
+        minWidth: 1600,
+        minHeight: 1600,
+      );
+      if (out == null) return file;
+      return XFile(out.path, mimeType: 'image/jpeg');
+    } catch (_) {
+      return file;
     }
   }
 
@@ -338,7 +406,7 @@ class PostingController extends StateNotifier<PostingState> {
   }
 
   Future<void> saveDraftNow() async {
-    await _autosave();
+    await _autosave(silent: false);
   }
 
   Future<void> loadPreview() async {
@@ -435,23 +503,41 @@ class PostingController extends StateNotifier<PostingState> {
 
   Future<void> _loadDraftData(int id) async {
     try {
-      final json = await _repository.getById(id);
-      final images = (json['images'] as List<dynamic>? ?? [])
-          .map(
-            (e) => PostingImage(
-              url: (e as Map<String, dynamic>)['url'] as String? ?? '',
-              sortOrder: (e['sort_order'] as num?)?.toInt() ?? 0,
-            ),
-          )
-          .toList()
-        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      final raw = await _repository.getById(id);
+      final json = _listingRootFromJson(raw);
+      List<PostingImage> images;
+      final imageUrls = json['image_urls'] as List<dynamic>?;
+      if (imageUrls != null && imageUrls.isNotEmpty) {
+        images = imageUrls
+            .asMap()
+            .entries
+            .map(
+              (e) {
+                final v = e.value;
+                final s = v is String ? v : v?.toString() ?? '';
+                return PostingImage(url: s, sortOrder: e.key);
+              },
+            )
+            .toList();
+      } else {
+        images = (json['images'] as List<dynamic>? ?? [])
+            .map(
+              (e) => PostingImage(
+                url: (e as Map<String, dynamic>)['url'] as String? ?? '',
+                sortOrder: (e['sort_order'] as num?)?.toInt() ?? 0,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      }
       state = state.copyWith(
+        hydrateGeneration: state.hydrateGeneration + 1,
         payload: PostingDraftPayload(
           categoryId: (json['category_id'] as num?)?.toInt(),
           title: json['title'] as String?,
           description: json['description'] as String?,
           price: _toInt(json['price']),
-          currency: (json['currency'] as String?) ?? 'USD',
+          currency: (json['currency'] as String?) ?? ListingCurrency.backendDefault,
           city: json['city'] as String?,
           contactPhone: json['contact_phone'] as String?,
           latitude: _toDouble(json['latitude']),
@@ -462,26 +548,59 @@ class PostingController extends StateNotifier<PostingState> {
     } catch (_) {}
   }
 
+  /// Preview API often nests fields under `listing`.
+  static Map<String, dynamic> _listingRootFromJson(Map<String, dynamic> json) {
+    final listing = json['listing'];
+    if (listing is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(listing);
+    }
+    return json;
+  }
+
+  bool _hasPersistableDraftContent(PostingDraftPayload p) {
+    if (p.categoryId != null) return true;
+    if ((p.title ?? '').trim().isNotEmpty) return true;
+    if ((p.description ?? '').trim().isNotEmpty) return true;
+    if (p.images.isNotEmpty) return true;
+    if (p.price != null) return true;
+    if ((p.city ?? '').trim().isNotEmpty) return true;
+    if ((p.contactPhone ?? '').trim().isNotEmpty) return true;
+    if (p.latitude != null || p.longitude != null) return true;
+    return false;
+  }
+
   void _scheduleAutosave() {
     _autosaveDebounce?.cancel();
-    _autosaveDebounce = Timer(const Duration(milliseconds: 600), () async {
-      await _autosave();
+    _autosaveDebounce = Timer(const Duration(milliseconds: 500), () async {
+      await _autosave(silent: true);
     });
   }
 
-  Future<void> _autosave() async {
-    state = state.copyWith(isSavingDraft: true, clearError: true);
+  Future<void> _autosave({bool silent = true}) async {
+    if (!_hasPersistableDraftContent(state.payload)) {
+      return;
+    }
+    if (!silent) {
+      state = state.copyWith(isSavingDraft: true, clearError: true);
+    } else if (state.error != null) {
+      state = state.copyWith(clearError: true);
+    }
     try {
       await _ensureDraftId();
       await _repository.updateDraft(state.draftId!, state.payload);
-      state = state.copyWith(isSavingDraft: false);
+      if (!silent) {
+        state = state.copyWith(isSavingDraft: false);
+      }
     } on ApiFieldErrorsException catch (e) {
       _applyFieldErrors(
         e,
-        isSavingDraft: false,
+        isSavingDraft: silent ? null : false,
       );
     } catch (e) {
-      state = state.copyWith(isSavingDraft: false, error: e.toString());
+      state = state.copyWith(
+        isSavingDraft: silent ? null : false,
+        error: e.toString(),
+      );
     }
   }
 
@@ -509,6 +628,7 @@ class PostingController extends StateNotifier<PostingState> {
       clearDraftId: true,
       payload: const PostingDraftPayload(),
       fieldErrors: {},
+      hydrateGeneration: state.hydrateGeneration + 1,
     );
   }
 

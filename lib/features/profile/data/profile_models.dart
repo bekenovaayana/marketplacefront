@@ -37,6 +37,7 @@ class UserMeResponse {
   final bool notifyNewMessage;
   final bool notifyContactRequest;
   final bool notifyListingFavorited;
+  /// Absolute `http(s)://` from API, null if none; legacy responses may use `/…` paths.
   final String? avatarUrl;
   final String status;
   final bool emailVerified;
@@ -136,18 +137,19 @@ class FieldValidationError {
 
 class AvatarUploadResponse {
   const AvatarUploadResponse({
-    required this.avatarUrl,
+    this.avatarUrl,
     required this.contentType,
     required this.sizeBytes,
   });
 
-  final String avatarUrl;
+  /// Absolute `http(s)://` URL from the server, or null if not set.
+  final String? avatarUrl;
   final String contentType;
   final int sizeBytes;
 
   factory AvatarUploadResponse.fromJson(Map<String, dynamic> json) {
     return AvatarUploadResponse(
-      avatarUrl: json['avatar_url'] as String? ?? '',
+      avatarUrl: json['avatar_url'] as String?,
       contentType: json['content_type'] as String? ?? '',
       sizeBytes: (json['size_bytes'] as num?)?.toInt() ?? 0,
     );

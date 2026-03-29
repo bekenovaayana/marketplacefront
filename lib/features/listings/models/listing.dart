@@ -1,3 +1,5 @@
+import 'package:marketplace_frontend/core/json/json_read.dart';
+
 class Listing {
   const Listing({
     required this.id,
@@ -19,13 +21,13 @@ class Listing {
 
   factory Listing.fromJson(Map<String, dynamic> json) {
     return Listing(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      title: json['title'] as String? ?? '',
-      description: json['description'] as String? ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0,
-      city: json['city'] as String? ?? '',
-      ownerId: (json['owner_id'] as num?)?.toInt() ?? 0,
-      isFavorite: json['is_favorite'] as bool? ?? false,
+      id: JsonRead.intVal(json['id']),
+      title: JsonRead.string(json['title']),
+      description: JsonRead.string(json['description']),
+      price: JsonRead.price(json['price']),
+      city: JsonRead.string(json['city']),
+      ownerId: JsonRead.intVal(json['owner_id']),
+      isFavorite: JsonRead.boolVal(json['is_favorite']),
     );
   }
 

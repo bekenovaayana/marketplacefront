@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
@@ -166,6 +167,9 @@ class PostingRepository {
       params['category_id'] = categoryId;
     }
     Response<dynamic> response;
+    if (kDebugMode) {
+      debugPrint('[PostingRepository.myListings] GET /listings/me params=$params');
+    }
     try {
       // Use canonical /listings/me endpoint directly.
       // Previously the code tried /listings/my first, but that path matches
@@ -179,6 +183,11 @@ class PostingRepository {
     final items = data is List<dynamic>
         ? data
         : ((data as Map<String, dynamic>)['items'] as List<dynamic>? ?? []);
+    if (kDebugMode) {
+      debugPrint(
+        '[PostingRepository.myListings] items=${items.length} (status=$status sort=$sort)',
+      );
+    }
     return items.map((e) => ListingMine.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -197,22 +206,40 @@ class PostingRepository {
   }
 
   Future<PostingImage> uploadImage(XFile file) async {
-    final mimeType = _effectiveMimeType(file);
-    final multipart = await MultipartFile.fromFile(
-      file.path,
-      filename: file.name,
-      contentType: _resolveContentType(mimeType),
-    );
-    try {
-      final response = await _dio.post(
-        '/uploads/images',
+    Future<Response<dynamic>> postTo(String path) async {
+      final mimeType = _effectiveMimeType(file);
+      final multipart = await MultipartFile.fromFile(
+        file.path,
+        filename: file.name,
+        contentType: _resolveContentType(mimeType),
+      );
+      return _dio.post(
+        path,
         data: FormData.fromMap({'file': multipart}),
         options: Options(contentType: 'multipart/form-data'),
       );
-      return PostingImage(
-        url: (response.data['url'] as String?) ?? '',
-        sortOrder: 0,
-      );
+    }
+
+    try {
+      Response<dynamic> response;
+      try {
+        response = await postTo('/uploads');
+      } on DioException catch (e) {
+        final code = e.response?.statusCode;
+        if (code == 404 || code == 405) {
+          response = await postTo('/uploads/images');
+        } else {
+          rethrow;
+        }
+      }
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        return PostingImage(
+          url: (data['url'] as String?) ?? '',
+          sortOrder: 0,
+        );
+      }
+      throw const ApiException('Upload response missing url');
     } on DioException catch (e) {
       final code = e.response?.statusCode;
       final fe = tryApiFieldErrorsFromResponse(e.response?.data);
@@ -222,7 +249,7 @@ class PostingRepository {
       }
       if (code == 415) {
         throw const ApiException(
-          'Unsupported image format. Use jpg, png, webp.',
+          'Unsupported image format.',
           statusCode: 415,
         );
       }
@@ -282,6 +309,26 @@ class PostingRepository {
     try {
       await _dio.delete<void>('/listings/$id');
     } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      final data = e.response?.data;
+      if (data is Map<String, dynamic>) {
+        final detail = data['detail'];
+        if (detail is String && detail.isNotEmpty) {
+          throw ApiException(detail, statusCode: code);
+        }
+      }
+      if (code == 403) {
+        throw const ApiException(
+          'You can delete only your own listings.',
+          statusCode: 403,
+        );
+      }
+      if (code == 404) {
+        throw const ApiException(
+          'Listing not found or already removed.',
+          statusCode: 404,
+        );
+      }
       throw _mapDio(e, fallbackMessage: 'Delete failed');
     }
   }
@@ -296,6 +343,9 @@ class PostingRepository {
     }
     if (mime == 'image/webp') {
       return MediaType('image', 'webp');
+    }
+    if (mime == 'image/heic' || mime == 'image/heif') {
+      return MediaType('image', 'heic');
     }
     if (mime == 'video/mp4') {
       return MediaType('video', 'mp4');

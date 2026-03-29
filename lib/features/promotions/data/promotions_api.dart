@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:marketplace_frontend/core/constants/listing_currency.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
 
@@ -35,7 +36,7 @@ class PromotionOptionDto {
     return PromotionOptionDto(
       days: (json['days'] as num?)?.toInt() ?? 0,
       price: (json['price'] as num?)?.toDouble() ?? 0,
-      currency: json['currency'] as String? ?? 'USD',
+      currency: json['currency'] as String? ?? ListingCurrency.backendDefault,
     );
   }
 }

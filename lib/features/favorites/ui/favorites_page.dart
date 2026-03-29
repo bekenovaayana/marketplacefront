@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:marketplace_frontend/core/errors/error_mapper.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/features/favorites/state/favorites_controller.dart';
+import 'package:marketplace_frontend/features/home/state/home_controller.dart';
 import 'package:marketplace_frontend/features/listings/ui/listing_detail_page.dart';
 import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
 import 'package:marketplace_frontend/shared/widgets/listing_card.dart';
@@ -111,9 +112,14 @@ class _FavoritesPageState extends ConsumerState<FavoritesPage>
                         builder: (_) => ListingDetailPage(listingId: item.id),
                       ),
                     ),
-                    onFavoriteTap: () => ref
-                        .read(favoritesControllerProvider.notifier)
-                        .remove(item.id),
+                    onFavoriteTap: () async {
+                      await ref
+                          .read(favoritesControllerProvider.notifier)
+                          .remove(item.id);
+                      ref
+                          .read(homeControllerProvider.notifier)
+                          .syncFavorite(item.id, false);
+                    },
                   );
                 },
               ),

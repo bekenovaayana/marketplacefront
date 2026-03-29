@@ -8,6 +8,7 @@ import 'package:marketplace_frontend/features/favorites/ui/favorites_page.dart';
 import 'package:marketplace_frontend/features/home/ui/home_tab.dart';
 import 'package:marketplace_frontend/features/notifications/state/unread_notifications_provider.dart';
 import 'package:marketplace_frontend/features/posting/ui/posting_tab.dart';
+import 'package:marketplace_frontend/features/profile/state/my_active_listings_controller.dart';
 import 'package:marketplace_frontend/features/profile/ui/profile_tab.dart';
 import 'package:marketplace_frontend/shared/l10n/app_strings.dart';
 
@@ -137,12 +138,16 @@ class _MainTabsPageState extends ConsumerState<MainTabsPage>
             await context.push('/auth-gate?from=$from');
             return;
           }
+          final from = _index;
           setState(() => _index = value);
           if (!auth.isAuthenticated) return;
           if (value == 3) {
             ref
                 .read(conversationsControllerProvider.notifier)
                 .refreshUnreadSummary();
+          }
+          if (value == 4 && from == 2) {
+            ref.read(myActiveListingsProvider.notifier).refresh();
           }
         },
         destinations: [

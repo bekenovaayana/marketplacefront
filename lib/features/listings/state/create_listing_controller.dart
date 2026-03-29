@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:marketplace_frontend/core/constants/listing_currency.dart';
 import 'package:marketplace_frontend/core/errors/api_exception.dart';
 import 'package:marketplace_frontend/features/home/models/home_models.dart';
 import 'package:marketplace_frontend/features/listings/data/create_listing_repository.dart';
@@ -150,7 +151,7 @@ class CreateListingController extends StateNotifier<CreateListingState> {
           title: title,
           description: description,
           price: price,
-          currency: 'USD',
+          currency: ListingCurrency.backendDefault,
           city: city,
           contactPhone: phone,
           latitude: state.latitude,

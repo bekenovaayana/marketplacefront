@@ -1,3 +1,5 @@
+import 'package:json_annotation/json_annotation.dart';
+import 'package:marketplace_frontend/core/json/json_read.dart';
 import 'package:marketplace_frontend/features/listings/models/listing_public.dart';
 
 class HomeCategory {
@@ -8,17 +10,21 @@ class HomeCategory {
     required this.listingsCount,
   });
 
+  @JsonKey(name: 'id')
   final int id;
+  @JsonKey(name: 'name')
   final String name;
+  @JsonKey(name: 'slug')
   final String slug;
+  @JsonKey(name: 'listings_count')
   final int listingsCount;
 
   factory HomeCategory.fromJson(Map<String, dynamic> json) {
     return HomeCategory(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      name: json['name'] as String? ?? '',
-      slug: json['slug'] as String? ?? '',
-      listingsCount: (json['listings_count'] as num?)?.toInt() ?? 0,
+      id: JsonRead.intVal(json['id']),
+      name: JsonRead.string(json['name']),
+      slug: JsonRead.string(json['slug']),
+      listingsCount: JsonRead.intVal(json['listings_count']),
     );
   }
 }
@@ -36,15 +42,9 @@ class HomeResponse {
 
   factory HomeResponse.fromJson(Map<String, dynamic> json) {
     return HomeResponse(
-      categories: (json['categories'] as List<dynamic>? ?? [])
-          .map((e) => HomeCategory.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      recommended: (json['recommended'] as List<dynamic>? ?? [])
-          .map((e) => ListingPublic.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      latest: (json['latest'] as List<dynamic>? ?? [])
-          .map((e) => ListingPublic.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      categories: JsonRead.listOfMap(json['categories'], HomeCategory.fromJson),
+      recommended: JsonRead.listOfMap(json['recommended'], ListingPublic.fromJson),
+      latest: JsonRead.listOfMap(json['latest'], ListingPublic.fromJson),
     );
   }
 }
@@ -60,8 +60,8 @@ class FacetCity {
 
   factory FacetCity.fromJson(Map<String, dynamic> json) {
     return FacetCity(
-      city: json['city'] as String? ?? '',
-      count: (json['count'] as num?)?.toInt() ?? 0,
+      city: JsonRead.string(json['city']),
+      count: JsonRead.intVal(json['count']),
     );
   }
 }
@@ -79,9 +79,9 @@ class FacetCategory {
 
   factory FacetCategory.fromJson(Map<String, dynamic> json) {
     return FacetCategory(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      slug: json['slug'] as String? ?? '',
-      count: (json['count'] as num?)?.toInt() ?? 0,
+      id: JsonRead.intVal(json['id']),
+      slug: JsonRead.string(json['slug']),
+      count: JsonRead.intVal(json['count']),
     );
   }
 }
@@ -109,14 +109,11 @@ class ListingsFacets {
       );
     }
     return ListingsFacets(
-      priceMin: (json['price_min'] as num?)?.toDouble(),
-      priceMax: (json['price_max'] as num?)?.toDouble(),
-      cities: (json['cities'] as List<dynamic>? ?? [])
-          .map((e) => FacetCity.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      categories: (json['categories'] as List<dynamic>? ?? [])
-          .map((e) => FacetCategory.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      priceMin: JsonRead.doubleNullable(json['price_min']),
+      priceMax: JsonRead.doubleNullable(json['price_max']),
+      cities: JsonRead.listOfMap(json['cities'], FacetCity.fromJson),
+      categories:
+          JsonRead.listOfMap(json['categories'], FacetCategory.fromJson),
     );
   }
 }

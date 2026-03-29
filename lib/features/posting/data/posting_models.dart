@@ -1,3 +1,6 @@
+import 'package:marketplace_frontend/core/constants/listing_currency.dart';
+import 'package:marketplace_frontend/core/json/json_read.dart';
+
 class PostingImage {
   const PostingImage({
     required this.url,
@@ -19,7 +22,7 @@ class PostingDraftPayload {
     this.title,
     this.description,
     this.price,
-    this.currency = 'USD',
+    this.currency = ListingCurrency.backendDefault,
     this.city,
     this.contactPhone,
     this.latitude,
@@ -108,32 +111,53 @@ class ListingMine {
   String get cover => images.isEmpty ? '' : images.first.url;
 
   factory ListingMine.fromJson(Map<String, dynamic> json) {
-    final imageList = (json['images'] as List<dynamic>? ?? [])
-        .map((e) => PostingImage(
-              url: (e as Map<String, dynamic>)['url'] as String? ?? '',
-              sortOrder: ((e)['sort_order'] as num?)?.toInt() ?? 0,
-            ))
-        .toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    List<PostingImage> imageList;
+    final urls = json['image_urls'];
+    if (urls is List<dynamic> && urls.isNotEmpty) {
+      imageList = urls
+          .asMap()
+          .entries
+          .map((e) {
+            final v = e.value;
+            final s = v is String ? v : JsonRead.string(v);
+            return PostingImage(url: s, sortOrder: e.key);
+          })
+          .toList();
+    } else {
+      final raw = json['images'];
+      if (raw is List<dynamic>) {
+        imageList = raw
+            .map((e) => JsonRead.map(e))
+            .whereType<Map<String, dynamic>>()
+            .map(
+              (m) => PostingImage(
+                url: JsonRead.string(m['url']),
+                sortOrder: JsonRead.intVal(m['sort_order']),
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      } else {
+        imageList = [];
+      }
+    }
     return ListingMine(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      title: json['title'] as String? ?? '',
-      status: json['status'] as String? ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0,
-      currency: json['currency'] as String? ?? 'USD',
-      city: json['city'] as String? ?? '',
+      id: JsonRead.intVal(json['id']),
+      title: JsonRead.string(json['title']),
+      status: JsonRead.string(json['status']),
+      price: JsonRead.price(json['price']),
+      currency: JsonRead.string(json['currency'], ListingCurrency.backendDefault),
+      city: JsonRead.string(json['city']),
       images: imageList,
-      isBoosted: json['is_boosted'] as bool? ?? false,
-      // Backend field is view_count (Listing model); also accept views_count /
-      // views aliases from older API versions.
-      viewsCount: (json['view_count'] as num?)?.toInt() ??
-          (json['views_count'] as num?)?.toInt() ??
-          (json['views'] as num?)?.toInt() ??
-          0,
-      savesCount: (json['favorites_count'] as num?)?.toInt() ??
-          (json['favourites_count'] as num?)?.toInt() ??
-          (json['saved_count'] as num?)?.toInt() ??
-          0,
+      isBoosted: JsonRead.boolVal(json['is_boosted']),
+      viewsCount: JsonRead.intVal(
+        json['view_count'] ?? json['views_count'] ?? json['views'],
+      ),
+      savesCount: JsonRead.intVal(
+        json['favorites_count'] ??
+            json['favourites_count'] ??
+            json['saved_count'],
+      ),
     );
   }
 }
@@ -162,27 +186,33 @@ class ListingPreviewCard {
     Map<String, dynamic> json,
     int fallbackListingId,
   ) {
-    final root = json['listing'] is Map<String, dynamic>
-        ? json['listing'] as Map<String, dynamic>
-        : json;
-    final id = (root['id'] as num?)?.toInt() ?? fallbackListingId;
-    final images = root['images'] as List<dynamic>? ?? [];
+    final nested = JsonRead.map(json['listing']);
+    final root = nested ?? json;
+    final id = JsonRead.intVal(root['id'], fallbackListingId);
     String url = '';
-    if (images.isNotEmpty && images.first is Map<String, dynamic>) {
-      url = (images.first as Map<String, dynamic>)['url'] as String? ?? '';
+    final imageUrls = root['image_urls'];
+    if (imageUrls is List<dynamic> && imageUrls.isNotEmpty) {
+      final first = imageUrls.first;
+      url = first is String ? first : JsonRead.string(first);
     }
-    final primary = root['primary_image'] as String?;
-    if (url.isEmpty && primary != null) {
-      url = primary;
+    if (url.isEmpty) {
+      final images = root['images'];
+      if (images is List<dynamic> && images.isNotEmpty) {
+        final m = JsonRead.map(images.first);
+        if (m != null) url = JsonRead.string(m['url']);
+      }
+    }
+    if (url.isEmpty) {
+      url = JsonRead.string(root['primary_image']);
     }
     return ListingPreviewCard(
       listingId: id,
-      title: root['title'] as String? ?? '',
-      price: (root['price'] as num?)?.toDouble() ?? 0,
-      currency: root['currency'] as String? ?? 'USD',
-      city: root['city'] as String? ?? '',
+      title: JsonRead.string(root['title']),
+      price: JsonRead.price(root['price']),
+      currency: JsonRead.string(root['currency'], ListingCurrency.backendDefault),
+      city: JsonRead.string(root['city']),
       imageUrl: url,
-      isBoosted: root['is_boosted'] as bool? ?? false,
+      isBoosted: JsonRead.boolVal(root['is_boosted']),
     );
   }
 }

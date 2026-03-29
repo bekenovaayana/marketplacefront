@@ -66,5 +66,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location is used to suggest your city when you post a listing.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Photos are attached to your marketplace listings.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera is used to take photos for your listings.</string>
 </dict>
 </plist>

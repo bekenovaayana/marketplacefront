@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:marketplace_frontend/core/errors/api_exception.dart';
+import 'package:marketplace_frontend/core/errors/fastapi_detail.dart';
 import 'package:marketplace_frontend/core/config/env.dart';
 import 'package:marketplace_frontend/core/network/auth_interceptor.dart';
 import 'package:marketplace_frontend/core/storage/token_storage.dart';
@@ -48,6 +49,7 @@ final dioProvider = Provider<Dio>((ref) {
         if (kDebugMode &&
             (options.path.contains('/auth/login') ||
                 options.path.contains('/auth/register') ||
+                options.path.contains('/auth/me') ||
                 options.path.contains('/users/me'))) {
           debugPrint('REQ ${options.method} ${options.baseUrl}${options.path}');
         }
@@ -71,13 +73,20 @@ final dioProvider = Provider<Dio>((ref) {
         if (kDebugMode &&
             (options.path.contains('/auth/login') ||
                 options.path.contains('/auth/register') ||
+                options.path.contains('/auth/me') ||
                 options.path.contains('/users/me'))) {
           debugPrint('ERR $status ${options.baseUrl}${options.path}');
         }
         final hasAuthHeader =
             (options.headers['Authorization']?.toString().isNotEmpty ?? false);
         final retried = options.extra['reauth_retried'] == true;
-        if (status == 401 && hasAuthHeader && !retried) {
+        if (status == 401 && hasAuthHeader) {
+          if (retried) {
+            await tokenStorage.clear();
+            ref.read(sessionExpiredProvider).value++;
+            handler.next(error);
+            return;
+          }
           await _retryAfterReauth(
             ref: ref,
             dio: dio,
@@ -90,6 +99,17 @@ final dioProvider = Provider<Dio>((ref) {
         }
         final detail = error.response?.data;
         if (detail is Map<String, dynamic>) {
+          final parsed = messageFromFastApiDetail(detail['detail']);
+          if (parsed != null && parsed.isNotEmpty) {
+            return handler.reject(
+              error.copyWith(
+                error: ApiException(
+                  parsed,
+                  statusCode: error.response?.statusCode,
+                ),
+              ),
+            );
+          }
           final message = detail['detail'];
           if (message is String && message.isNotEmpty) {
             return handler.reject(

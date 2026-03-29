@@ -1,20 +1,28 @@
+import 'package:json_annotation/json_annotation.dart';
+import 'package:marketplace_frontend/core/constants/listing_currency.dart';
+import 'package:marketplace_frontend/core/json/json_read.dart';
+
+/// Listing image object from API `images[]` (`url`, `sort_order`).
 class ListingImage {
   const ListingImage({
     required this.url,
     required this.sortOrder,
   });
 
+  @JsonKey(name: 'url')
   final String url;
+  @JsonKey(name: 'sort_order')
   final int sortOrder;
 
   factory ListingImage.fromJson(Map<String, dynamic> json) {
     return ListingImage(
-      url: json['url'] as String? ?? '',
-      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+      url: JsonRead.string(json['url']),
+      sortOrder: JsonRead.intVal(json['sort_order']),
     );
   }
 }
 
+/// Feed / card listing. Wire names are snake_case on the server.
 class ListingPublic {
   const ListingPublic({
     required this.id,
@@ -26,39 +34,112 @@ class ListingPublic {
     required this.createdAt,
     required this.images,
     required this.isFavorite,
+    this.isOwner,
+    this.userId,
+    this.categoryId,
+    this.favoritesCount = 0,
+    this.viewsCount = 0,
   });
 
+  @JsonKey(name: 'id')
   final int id;
+  @JsonKey(name: 'title')
   final String title;
+  @JsonKey(name: 'description')
   final String description;
+  @JsonKey(name: 'price')
   final double price;
+  @JsonKey(name: 'currency')
   final String currency;
+  @JsonKey(name: 'city')
   final String city;
+  @JsonKey(name: 'created_at')
   final DateTime? createdAt;
+  /// Prefer `image_urls` when present (see [fromJson]); same order as API.
   final List<ListingImage> images;
+  @JsonKey(name: 'is_favorite')
   final bool isFavorite;
+  @JsonKey(name: 'is_owner')
+  final bool? isOwner;
+  @JsonKey(name: 'user_id')
+  final int? userId;
+  @JsonKey(name: 'category_id')
+  final int? categoryId;
+  @JsonKey(name: 'favorites_count')
+  final int favoritesCount;
+  @JsonKey(name: 'view_count')
+  final int viewsCount;
 
   String get primaryImage => images.isEmpty ? '' : images.first.url;
 
   factory ListingPublic.fromJson(Map<String, dynamic> json) {
-    final imageJson = (json['images'] as List<dynamic>? ?? []);
+    final List<ListingImage> images;
+    final urls = json['image_urls'];
+    if (urls is List<dynamic> && urls.isNotEmpty) {
+      images = urls
+          .asMap()
+          .entries
+          .map((e) {
+            final v = e.value;
+            final s = v is String ? v : JsonRead.string(v);
+            return ListingImage(url: s, sortOrder: e.key);
+          })
+          .toList();
+    } else {
+      final raw = json['images'];
+      if (raw is List<dynamic>) {
+        images = raw
+            .map((e) => JsonRead.map(e))
+            .whereType<Map<String, dynamic>>()
+            .map(ListingImage.fromJson)
+            .toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      } else {
+        images = [];
+      }
+    }
+
+    DateTime? createdAt;
+    final createdRaw = json['created_at'];
+    if (createdRaw is String) {
+      createdAt = DateTime.tryParse(createdRaw);
+    }
+
     return ListingPublic(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      title: json['title'] as String? ?? '',
-      description: json['description'] as String? ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0,
-      currency: json['currency'] as String? ?? 'USD',
-      city: json['city'] as String? ?? '',
-      createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
-      images: imageJson
-          .map((e) => ListingImage.fromJson(e as Map<String, dynamic>))
-          .toList()
-        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)),
-      isFavorite: json['is_favorite'] as bool? ?? false,
+      id: JsonRead.intVal(json['id']),
+      title: JsonRead.string(json['title']),
+      description: JsonRead.string(json['description']),
+      price: JsonRead.price(json['price']),
+      currency: JsonRead.string(
+        json['currency'],
+        ListingCurrency.backendDefault,
+      ),
+      city: JsonRead.string(json['city']),
+      createdAt: createdAt,
+      images: images,
+      isFavorite: JsonRead.boolVal(json['is_favorite']),
+      isOwner: json['is_owner'] == null
+          ? null
+          : JsonRead.boolVal(json['is_owner']),
+      userId: JsonRead.intNullable(json['user_id']),
+      categoryId: JsonRead.intNullable(json['category_id']),
+      favoritesCount: JsonRead.intVal(
+        json['favorites_count'] ?? json['favourites_count'],
+      ),
+      viewsCount: JsonRead.intVal(
+        json['view_count'] ?? json['views_count'] ?? json['views'],
+      ),
     );
   }
 
-  ListingPublic copyWith({bool? isFavorite}) {
+  ListingPublic copyWith({
+    bool? isFavorite,
+    bool? isOwner,
+    int? userId,
+    int? categoryId,
+    int? favoritesCount,
+    int? viewsCount,
+  }) {
     return ListingPublic(
       id: id,
       title: title,
@@ -69,6 +150,11 @@ class ListingPublic {
       createdAt: createdAt,
       images: images,
       isFavorite: isFavorite ?? this.isFavorite,
+      isOwner: isOwner ?? this.isOwner,
+      userId: userId ?? this.userId,
+      categoryId: categoryId ?? this.categoryId,
+      favoritesCount: favoritesCount ?? this.favoritesCount,
+      viewsCount: viewsCount ?? this.viewsCount,
     );
   }
 }

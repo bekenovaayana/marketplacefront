@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:marketplace_frontend/core/json/json_read.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
 import 'package:marketplace_frontend/features/notifications/data/notification_models.dart';
 
@@ -25,23 +26,33 @@ class NotificationRepository {
         'unread_only': unreadOnly,
       },
     );
-    final data = response.data as Map<String, dynamic>;
-    final items = (data['items'] as List<dynamic>? ?? [])
-        .map((e) => NotificationModel.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final raw = response.data;
+    if (raw is! Map<String, dynamic>) {
+      return PaginatedResponse<NotificationModel>(
+        items: [],
+        page: page,
+        pageSize: pageSize,
+        totalPages: page,
+        totalItems: 0,
+      );
+    }
+    final data = raw;
+    final items = JsonRead.listOfMap(data['items'], NotificationModel.fromJson);
+    final src = JsonRead.paginationSource(data);
     return PaginatedResponse<NotificationModel>(
       items: items,
-      page: (data['page'] as num?)?.toInt() ?? page,
-      pageSize: (data['page_size'] as num?)?.toInt() ?? pageSize,
-      totalPages: (data['total_pages'] as num?)?.toInt() ?? page,
-      totalItems: (data['total_items'] as num?)?.toInt() ?? items.length,
+      page: JsonRead.intVal(src['page'], page),
+      pageSize: JsonRead.intVal(src['page_size'], pageSize),
+      totalPages: JsonRead.intVal(src['total_pages'], page),
+      totalItems: JsonRead.intVal(src['total_items'], items.length),
     );
   }
 
   Future<int> fetchUnreadCount() async {
     final response = await _dio.get('/notifications/unread-count');
-    final data = response.data as Map<String, dynamic>;
-    return (data['unread_count'] as num?)?.toInt() ?? 0;
+    final raw = response.data;
+    if (raw is! Map<String, dynamic>) return 0;
+    return JsonRead.intVal(raw['unread_count']);
   }
 
   Future<void> markRead(int notificationId) async {
@@ -50,7 +61,8 @@ class NotificationRepository {
 
   Future<int> markAllRead() async {
     final response = await _dio.post('/notifications/read-all');
-    final data = response.data as Map<String, dynamic>;
-    return (data['updated_count'] as num?)?.toInt() ?? 0;
+    final raw = response.data;
+    if (raw is! Map<String, dynamic>) return 0;
+    return JsonRead.intVal(raw['updated_count']);
   }
 }

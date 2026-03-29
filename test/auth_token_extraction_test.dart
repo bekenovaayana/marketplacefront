@@ -18,4 +18,26 @@ void main() {
       expect(token, 'alias-token');
     });
   });
+
+  group('AuthRepository.extractRefreshToken', () {
+    test('reads refresh_token', () {
+      expect(
+        AuthRepository.extractRefreshToken({
+          'refresh_token': ' r1 ',
+        }),
+        'r1',
+      );
+    });
+
+    test('reads refreshToken alias', () {
+      expect(
+        AuthRepository.extractRefreshToken({'refreshToken': 'r2'}),
+        'r2',
+      );
+    });
+
+    test('returns null when absent', () {
+      expect(AuthRepository.extractRefreshToken({}), isNull);
+    });
+  });
 }

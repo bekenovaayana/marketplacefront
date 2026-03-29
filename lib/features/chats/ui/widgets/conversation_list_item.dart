@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:marketplace_frontend/core/network/api_urls.dart';
 import 'package:marketplace_frontend/features/conversations/data/conversation_models.dart';
 
 class ConversationListItem extends StatelessWidget {
@@ -20,11 +21,20 @@ class ConversationListItem extends StatelessWidget {
         ? 'No messages yet'
         : conversation.lastMessagePreview.trim();
     final textTheme = Theme.of(context).textTheme;
+    final title = conversation.displayTitle;
+    final initial = title.isEmpty ? '?' : title[0].toUpperCase();
     return ListTile(
-      leading: CircleAvatar(
-        child: Text(conversation.title.isEmpty ? '?' : conversation.title[0].toUpperCase()),
-      ),
-      title: Text(conversation.title),
+      leading: conversation.peerAvatarUrl != null &&
+              conversation.peerAvatarUrl!.isNotEmpty
+          ? CircleAvatar(
+              backgroundImage: NetworkImage(
+                ApiUrls.networkImageUrl(conversation.peerAvatarUrl!),
+              ),
+              onBackgroundImageError: (_, _) {},
+              child: Text(initial),
+            )
+          : CircleAvatar(child: Text(initial)),
+      title: Text(title),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -43,7 +53,7 @@ class ConversationListItem extends StatelessWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: Image.network(
-                        conversation.listingImageUrl!,
+                        ApiUrls.networkImageUrl(conversation.listingImageUrl),
                         width: 18,
                         height: 18,
                         fit: BoxFit.cover,
@@ -55,9 +65,7 @@ class ConversationListItem extends StatelessWidget {
                   ],
                   Expanded(
                     child: Text(
-                      conversation.listingPrice == null
-                          ? conversation.listingTitle!
-                          : '${conversation.listingTitle!} · ${conversation.listingPrice!.toStringAsFixed(0)}',
+                      _listingSubtitle(conversation),
                       style: textTheme.bodySmall?.copyWith(color: Colors.grey.shade700),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -93,6 +101,19 @@ class ConversationListItem extends StatelessWidget {
       ),
       onTap: onTap,
     );
+  }
+
+  static String _listingSubtitle(Conversation c) {
+    final t = c.listingTitle;
+    if (t == null || t.isEmpty) return '';
+    final p = c.listingPrice;
+    if (p == null) return t;
+    final cur = c.listingCurrency;
+    final price = p.toStringAsFixed(0);
+    if (cur != null && cur.isNotEmpty) {
+      return '$t · $price $cur';
+    }
+    return '$t · $price';
   }
 
   String _formatTime(DateTime? value) {

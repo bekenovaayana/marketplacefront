@@ -3,12 +3,16 @@ import 'package:marketplace_frontend/core/errors/api_exception.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
 import 'package:marketplace_frontend/features/auth/data/auth_repository.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_state.dart';
+import 'package:marketplace_frontend/features/favorites/state/favorite_stale_guard.dart';
 
 final authControllerProvider = StateNotifierProvider<AuthController, AuthState>(
   (ref) {
     return AuthController(
       repository: ref.watch(authRepositoryProvider),
       reauthCoordinator: ref.watch(reauthCoordinatorProvider),
+      onSessionCleared: () {
+        ref.read(favoriteStaleGuardProvider.notifier).clear();
+      },
     );
   },
 );
@@ -17,12 +21,14 @@ class AuthController extends StateNotifier<AuthState> {
   AuthController({
     required AuthRepository repository,
     required ReauthCoordinator reauthCoordinator,
+    this.onSessionCleared,
   }) : _repository = repository,
        _reauthCoordinator = reauthCoordinator,
        super(const AuthState());
 
   final AuthRepository _repository;
   final ReauthCoordinator _reauthCoordinator;
+  final void Function()? onSessionCleared;
 
   Future<void> initialize() async {
     if (state.initialized) {
@@ -83,6 +89,7 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await _repository.logout();
+    onSessionCleared?.call();
     state = state.copyWith(
       user: null,
       initialized: true,
@@ -93,6 +100,7 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> handleUnauthorized() async {
     await _repository.logout();
+    onSessionCleared?.call();
     _reauthCoordinator.resolve(false);
     state = state.copyWith(
       user: null,

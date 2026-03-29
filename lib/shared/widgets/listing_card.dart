@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:marketplace_frontend/core/network/api_urls.dart';
 import 'package:marketplace_frontend/features/listings/models/listing_public.dart';
 
 class ListingCard extends StatelessWidget {
@@ -16,6 +17,7 @@ class ListingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = ApiUrls.networkImageUrl(item.primaryImage);
     final date = item.createdAt == null
         ? ''
         : DateFormat('dd MMM').format(item.createdAt!.toLocal());
@@ -31,13 +33,13 @@ class ListingCard extends StatelessWidget {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: item.primaryImage.isEmpty
+                    child: imageUrl.isEmpty
                         ? Container(
                             color: Colors.grey.shade200,
                             child: const Icon(Icons.image_not_supported_outlined),
                           )
                         : Image.network(
-                            item.primaryImage,
+                            imageUrl,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) {
                               return Container(
@@ -84,7 +86,27 @@ class ListingCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
+              padding: const EdgeInsets.fromLTRB(10, 2, 10, 4),
+              child: Row(
+                children: [
+                  Icon(Icons.favorite_border, size: 13, color: Colors.grey.shade600),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${item.favoritesCount}',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+                  ),
+                  const SizedBox(width: 10),
+                  Icon(Icons.visibility_outlined, size: 13, color: Colors.grey.shade600),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${item.viewsCount}',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
               child: Text(
                 [item.city, date].where((e) => e.isNotEmpty).join(' • '),
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:marketplace_frontend/core/network/api_urls.dart';
 import 'package:marketplace_frontend/features/notifications/data/notification_models.dart';
 import 'package:marketplace_frontend/features/notifications/ui/widgets/relative_time.dart';
 
@@ -15,15 +16,33 @@ class NotificationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUnread = !notification.isRead;
+    final avatarUrl = notification.actor?.avatarUrl;
+    final resolvedAvatar = avatarUrl != null && avatarUrl.isNotEmpty
+        ? ApiUrls.networkImageUrl(avatarUrl)
+        : '';
+
     return InkWell(
       onTap: onTap,
       child: Container(
         color: isUnread ? Colors.blue.shade50 : Colors.white,
         child: ListTile(
-          leading: Icon(
-            _iconForType(notification.notificationType),
-            color: _colorForType(notification.notificationType),
-          ),
+          leading: resolvedAvatar.isNotEmpty
+              ? ClipOval(
+                  child: Image.network(
+                    resolvedAvatar,
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Icon(
+                      _iconForType(notification.notificationType),
+                      color: _colorForType(notification.notificationType),
+                    ),
+                  ),
+                )
+              : Icon(
+                  _iconForType(notification.notificationType),
+                  color: _colorForType(notification.notificationType),
+                ),
           title: Text(
             notification.title,
             style: TextStyle(

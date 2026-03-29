@@ -13,23 +13,69 @@ class ListingDetailsRepository {
 
   final Dio _dio;
 
-  Future<ListingDetail> getById(int id) async {
-    final response = await _dio.get('/listings/$id');
-    return ListingDetail.fromJson(response.data as Map<String, dynamic>);
+  /// Public card: [GET /listings/:id]. Owner preview (drafts / inactive): [GET /listings/:id/preview].
+  Future<ListingDetail> fetchDetail(int id, {bool ownerPreview = false}) async {
+    final path =
+        ownerPreview ? '/listings/$id/preview' : '/listings/$id';
+    final response = await _dio.get(path);
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw const ApiException('Invalid listing response');
+    }
+    return ListingDetail.fromJson(data);
   }
 
-  Future<void> postContactIntent(int listingId) async {
+  Future<ListingDetail> getById(int id) => fetchDetail(id);
+
+  /// [DELETE /listings/:id] — 204 success; 403 not owner; 404 missing or removed.
+  Future<void> deleteListing(int id) async {
     try {
-      await _dio.post('/listings/$listingId/contact-intent');
+      await _dio.delete<void>('/listings/$id');
     } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      if (status == 429) {
-        throw ApiException(
-          _contactIntentDetail(e) ??
-              'You have already sent a contact request for this listing. Try again later.',
-          statusCode: 429,
+      final code = e.response?.statusCode;
+      final detail = _deleteDetailMessage(e);
+      if (detail != null && detail.isNotEmpty) {
+        throw ApiException(detail, statusCode: code);
+      }
+      if (code == 403) {
+        throw const ApiException(
+          'You can delete only your own listings.',
+          statusCode: 403,
         );
       }
+      if (code == 404) {
+        throw const ApiException(
+          'Listing not found or already removed.',
+          statusCode: 404,
+        );
+      }
+      throw ApiException(
+        e.message ?? 'Could not delete listing.',
+        statusCode: code,
+      );
+    }
+  }
+
+  static String? _deleteDetailMessage(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      final detail = data['detail'];
+      if (detail is String && detail.isNotEmpty) return detail;
+    }
+    return null;
+  }
+
+  /// POST /listings/:id/contact-intent — **200** for both first and repeat (detail text varies).
+  /// Do not treat **429** as a hard error (legacy throttle); same UX as success.
+  Future<void> postContactIntent(int listingId) async {
+    try {
+      final response = await _dio.post<dynamic>('/listings/$listingId/contact-intent');
+      final code = response.statusCode;
+      if (code != null && code >= 200 && code < 300) return;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status != null && status >= 200 && status < 300) return;
+      if (status == 429) return;
       throw ApiException(
         _contactIntentDetail(e) ?? 'Could not send contact request.',
         statusCode: status,

@@ -11,6 +11,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/core/errors/error_mapper.dart';
+import 'package:marketplace_frontend/core/network/api_urls.dart';
 import 'package:marketplace_frontend/features/profile/data/profile_models.dart';
 import 'package:marketplace_frontend/features/profile/state/profile_controller.dart';
 import 'package:marketplace_frontend/features/profile/state/profile_validation.dart';
@@ -619,7 +620,10 @@ class _AvatarPreview extends StatelessWidget {
     if (localPath != null && localPath!.isNotEmpty) {
       imageProvider = FileImage(File(localPath!));
     } else if (networkUrl != null && networkUrl!.isNotEmpty) {
-      imageProvider = NetworkImage(networkUrl!);
+      final resolved = ApiUrls.avatarUrlForDisplay(networkUrl);
+      if (resolved.isNotEmpty) {
+        imageProvider = NetworkImage(resolved);
+      }
     }
     return Center(
       child: Stack(
