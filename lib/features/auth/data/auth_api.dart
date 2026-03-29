@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
+import 'package:marketplace_frontend/core/network/users_me_dedupe.dart';
 import 'package:marketplace_frontend/features/auth/models/auth_user.dart';
 
 final authApiProvider = Provider<AuthApi>((ref) {
@@ -46,23 +47,7 @@ class AuthApi {
 
   /// Backend canonical profile: [GET /users/me]. Tries [GET /auth/me] only if 404 (older servers).
   Future<AuthUser> me() async {
-    try {
-      final response = await _dio.get('/users/me');
-      final data = response.data;
-      if (data is! Map<String, dynamic>) {
-        throw StateError('GET /users/me: expected JSON object, got ${data.runtimeType}');
-      }
-      return AuthUser.fromJson(data);
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 404) {
-        final response = await _dio.get('/auth/me');
-        final data = response.data;
-        if (data is! Map<String, dynamic>) {
-          throw StateError('GET /auth/me: expected JSON object');
-        }
-        return AuthUser.fromJson(data);
-      }
-      rethrow;
-    }
+    final data = await UsersMeDedupe.fetch(_dio);
+    return AuthUser.fromJson(data);
   }
 }

@@ -50,6 +50,7 @@ class _ChatsTabState extends ConsumerState<ChatsTab>
     String t(String key) => AppStrings.of(context, key);
     final auth = ref.watch(authControllerProvider);
     if (!auth.isAuthenticated) {
+      _requestedLoad = false;
       return Scaffold(
         body: Center(
           child: Padding(

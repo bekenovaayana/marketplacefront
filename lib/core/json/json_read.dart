@@ -82,6 +82,26 @@ class JsonRead {
     return out;
   }
 
+  /// Paged envelope or a raw JSON array (`items` / `results` / `data` / nested maps).
+  static List<dynamic> paginatedListItems(dynamic raw) {
+    if (raw is List<dynamic>) return raw;
+    if (raw is! Map<String, dynamic>) return const [];
+    dynamic items =
+        raw['items'] ?? raw['results'] ?? raw['data'] ?? raw['conversations'];
+    if (items is List<dynamic>) return items;
+    if (items is Map<String, dynamic>) {
+      final inner = items['items'] ?? items['results'];
+      if (inner is List<dynamic>) return inner;
+    }
+    final data = raw['data'];
+    if (data is List<dynamic>) return data;
+    if (data is Map<String, dynamic>) {
+      final inner = data['items'] ?? data['results'];
+      if (inner is List<dynamic>) return inner;
+    }
+    return const [];
+  }
+
   /// Pagination: read `meta` first, else same keys on the root object.
   static Map<String, dynamic> paginationSource(Map<String, dynamic> data) {
     return map(data['meta']) ?? data;

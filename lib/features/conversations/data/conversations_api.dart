@@ -91,8 +91,7 @@ class ConversationsApi {
       },
     );
     final raw = response.data;
-    if (raw is! Map<String, dynamic>) return [];
-    final items = raw['items'] ?? raw['results'] ?? raw['conversations'];
+    final items = JsonRead.paginatedListItems(raw);
     return JsonRead.listOfMap(items, Conversation.fromJson);
   }
 

@@ -282,6 +282,14 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
                 },
               ),
             ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.account_balance_wallet_outlined),
+                title: Text(tt('wallet')),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/wallet'),
+              ),
+            ),
             const SizedBox(height: 8),
             const ProfileMyListingsPanel(),
           ],

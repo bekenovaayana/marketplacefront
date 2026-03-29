@@ -43,8 +43,8 @@ class FavoritesRepository {
       queryParameters: {'page': page, 'page_size': pageSize},
     );
     final raw = response.data;
-    if (raw is! Map<String, dynamic>) return [];
-    return JsonRead.listOfMap(raw['items'], ListingPublic.fromJson);
+    final items = JsonRead.paginatedListItems(raw);
+    return JsonRead.listOfMap(items, ListingPublic.fromJson);
   }
 
   /// Rows with favorite metadata — **GET /favorites** (do not use for the home-style grid).
@@ -57,10 +57,22 @@ class FavoritesRepository {
       queryParameters: {'page': page, 'page_size': pageSize},
     );
     final raw = response.data;
-    if (raw is! Map<String, dynamic>) return [];
-    return JsonRead.listOfMap(raw['items'], FavoriteRecord.fromJson);
+    final items = JsonRead.paginatedListItems(raw);
+    return JsonRead.listOfMap(items, FavoriteRecord.fromJson);
   }
 
-  Future<List<ListingPublic>> list({int page = 1, int pageSize = 20}) =>
-      listListingsForGrid(page: page, pageSize: pageSize);
+  /// Prefers **GET /favorites/listings**; falls back to nested listings from **GET /favorites**.
+  Future<List<ListingPublic>> list({int page = 1, int pageSize = 20}) async {
+    try {
+      final grid = await listListingsForGrid(page: page, pageSize: pageSize);
+      if (grid.isNotEmpty) return grid;
+    } catch (_) {}
+    final records = await listFavoriteRecords(page: page, pageSize: pageSize);
+    final out = <ListingPublic>[];
+    for (final r in records) {
+      final l = r.listing;
+      if (l != null) out.add(l);
+    }
+    return out;
+  }
 }

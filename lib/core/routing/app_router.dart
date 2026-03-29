@@ -7,6 +7,7 @@ import 'package:marketplace_frontend/features/auth/ui/auth_gate_page.dart';
 import 'package:marketplace_frontend/features/auth/ui/login_page.dart';
 import 'package:marketplace_frontend/features/auth/ui/register_page.dart';
 import 'package:marketplace_frontend/features/notifications/ui/notifications_screen.dart';
+import 'package:marketplace_frontend/features/payments/ui/wallet_page.dart';
 import 'package:marketplace_frontend/features/posting/ui/post_listing_page.dart';
 import 'package:marketplace_frontend/features/profile/ui/edit_profile_screen.dart';
 import 'package:marketplace_frontend/features/promotions/ui/promote_listing_screen.dart';
@@ -32,6 +33,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         '/profile/edit',
         '/promote',
         '/notifications',
+        '/wallet',
         '/settings/notifications',
         '/settings/password',
       };
@@ -110,6 +112,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/promote',
         builder: (context, state) => const PromoteListingScreen(),
+      ),
+      GoRoute(
+        path: '/wallet',
+        builder: (context, state) => const WalletPage(),
       ),
       GoRoute(
         path: '/listings/new',

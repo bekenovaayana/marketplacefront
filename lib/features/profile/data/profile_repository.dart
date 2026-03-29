@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:marketplace_frontend/core/errors/api_exception.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
+import 'package:marketplace_frontend/core/network/users_me_dedupe.dart';
 import 'package:marketplace_frontend/features/profile/data/profile_models.dart';
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
@@ -17,8 +18,8 @@ class ProfileRepository {
   final Dio _dio;
 
   Future<UserMeResponse> getMe() async {
-    final response = await _dio.get('/users/me');
-    return UserMeResponse.fromJson(response.data as Map<String, dynamic>);
+    final data = await UsersMeDedupe.fetch(_dio);
+    return UserMeResponse.fromJson(data);
   }
 
   Future<ProfileCompletenessDto> getProfileCompleteness() async {

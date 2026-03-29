@@ -56,9 +56,16 @@ class _ConversationDetailPageState
   String? _error;
   static const _pageSize = 50;
 
+  late final ConversationsApi _conversationsApi;
+  late final AttachmentRepository _attachmentRepo;
+  late final UnreadNotificationsCountController _unreadNotifications;
+
   @override
   void initState() {
     super.initState();
+    _conversationsApi = ref.read(conversationsApiProvider);
+    _attachmentRepo = ref.read(attachmentRepositoryProvider);
+    _unreadNotifications = ref.read(unreadNotificationsCountProvider.notifier);
     _controller.addListener(_onTextChanged);
     Future.microtask(() async {
       await _loadMessages();
@@ -76,9 +83,11 @@ class _ConversationDetailPageState
       _hasMore = true;
     });
     try {
-      final data = await ref
-          .read(conversationsApiProvider)
-          .listMessages(widget.conversationId, page: 1, pageSize: _pageSize);
+      final data = await _conversationsApi.listMessages(
+        widget.conversationId,
+        page: 1,
+        pageSize: _pageSize,
+      );
       if (!mounted) return;
       setState(() {
         _messages = data;
@@ -99,13 +108,11 @@ class _ConversationDetailPageState
     setState(() => _isLoadingMore = true);
     try {
       final nextPage = _page + 1;
-      final data = await ref
-          .read(conversationsApiProvider)
-          .listMessages(
-            widget.conversationId,
-            page: nextPage,
-            pageSize: _pageSize,
-          );
+      final data = await _conversationsApi.listMessages(
+        widget.conversationId,
+        page: nextPage,
+        pageSize: _pageSize,
+      );
       if (!mounted) return;
       setState(() {
         _messages = [...data, ..._messages];
@@ -122,11 +129,10 @@ class _ConversationDetailPageState
   @override
   void dispose() {
     final cid = widget.conversationId;
-    final api = ref.read(conversationsApiProvider);
     unawaited(
-      api.markConversationRead(cid).catchError((Object _) {}),
+      _conversationsApi.markConversationRead(cid).catchError((Object _) {}),
     );
-    ref.read(unreadNotificationsCountProvider.notifier).refresh();
+    _unreadNotifications.refresh();
     _controller.removeListener(_onTextChanged);
     _controller.dispose();
     _scrollController.dispose();
@@ -147,7 +153,7 @@ class _ConversationDetailPageState
         .toList();
     if (_isSending || hasUploading) return;
     if (text.isEmpty && readyAttachments.isEmpty) return;
-    final api = ref.read(conversationsApiProvider);
+    final api = _conversationsApi;
     final requestId = api.buildIdempotencyKey();
     final attachmentPayload = readyAttachments
         .map(
@@ -393,8 +399,8 @@ class _ConversationDetailPageState
 
   Future<void> _uploadAt(int index) async {
     if (index < 0 || index >= _pendingAttachments.length) return;
-    final repo = ref.read(attachmentRepositoryProvider);
-    final api = ref.read(conversationsApiProvider);
+    final repo = _attachmentRepo;
+    final api = _conversationsApi;
     final current = _pendingAttachments[index];
     _replaceAttachment(
       index,

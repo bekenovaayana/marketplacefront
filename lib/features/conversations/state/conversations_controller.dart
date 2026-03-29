@@ -57,11 +57,7 @@ final conversationsControllerProvider = StateNotifierProvider<
 });
 
 class ConversationsController extends StateNotifier<ConversationsState> {
-  ConversationsController(this._api)
-      : super(const ConversationsState(isLoading: true)) {
-    load();
-    refreshUnreadSummary();
-  }
+  ConversationsController(this._api) : super(const ConversationsState());
 
   final ConversationsApi _api;
   static const _pageSize = 20;

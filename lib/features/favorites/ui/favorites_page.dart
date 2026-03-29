@@ -30,6 +30,7 @@ class _FavoritesPageState extends ConsumerState<FavoritesPage>
     String t(String key) => AppStrings.of(context, key);
     final auth = ref.watch(authControllerProvider);
     if (!auth.isAuthenticated) {
+      _requestedLoad = false;
       return Scaffold(
         body: Center(
           child: Padding(
