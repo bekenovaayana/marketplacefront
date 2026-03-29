@@ -1,27 +1,23 @@
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:marketplace_frontend/features/payments/data/payments_api.dart';
-import 'package:marketplace_frontend/features/promotions/data/promotions_api.dart';
 
 class PaymentsState {
   const PaymentsState({
     this.isLoading = false,
     this.message,
     this.lastPayment,
-    this.lastPromotion,
     this.error,
   });
 
   final bool isLoading;
   final String? message;
   final PaymentDto? lastPayment;
-  final PromotionDto? lastPromotion;
   final String? error;
 
   PaymentsState copyWith({
     bool? isLoading,
     String? message,
     PaymentDto? lastPayment,
-    PromotionDto? lastPromotion,
     String? error,
     bool clearFeedback = false,
   }) {
@@ -29,7 +25,6 @@ class PaymentsState {
       isLoading: isLoading ?? this.isLoading,
       message: clearFeedback ? null : (message ?? this.message),
       lastPayment: lastPayment ?? this.lastPayment,
-      lastPromotion: lastPromotion ?? this.lastPromotion,
       error: clearFeedback ? null : (error ?? this.error),
     );
   }
@@ -37,18 +32,13 @@ class PaymentsState {
 
 final paymentsControllerProvider =
     StateNotifierProvider<PaymentsController, PaymentsState>((ref) {
-  return PaymentsController(
-    ref.watch(paymentsApiProvider),
-    ref.watch(promotionsApiProvider),
-  );
+  return PaymentsController(ref.watch(paymentsApiProvider));
 });
 
 class PaymentsController extends StateNotifier<PaymentsState> {
-  PaymentsController(this._paymentsApi, this._promotionsApi)
-      : super(const PaymentsState());
+  PaymentsController(this._paymentsApi) : super(const PaymentsState());
 
   final PaymentsApi _paymentsApi;
-  final PromotionsApi _promotionsApi;
 
   Future<void> createPayment({
     required int listingId,
@@ -89,27 +79,4 @@ class PaymentsController extends StateNotifier<PaymentsState> {
     }
   }
 
-  Future<void> createPromotion({
-    required int listingId,
-    required String type,
-    required String city,
-    required int durationDays,
-  }) async {
-    state = state.copyWith(isLoading: true, clearFeedback: true);
-    try {
-      final promotion = await _promotionsApi.createPromotion(
-        listingId: listingId,
-        promotionType: type,
-        targetCity: city,
-        durationDays: durationDays,
-      );
-      state = state.copyWith(
-        isLoading: false,
-        lastPromotion: promotion,
-        message: 'Promotion created: #${promotion.id}',
-      );
-    } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
-    }
-  }
 }

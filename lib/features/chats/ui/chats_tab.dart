@@ -147,6 +147,7 @@ class _ChatsTabState extends ConsumerState<ChatsTab>
                           conversationId: item.id,
                           peerTitle:
                               item.displayTitle == 'Chat' ? null : item.displayTitle,
+                          peerUserId: item.peerUserId,
                         ),
                       ),
                     ),

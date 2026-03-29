@@ -8,6 +8,7 @@ const Object _kUserKeep = Object();
 class AuthState {
   const AuthState({
     this.isLoading = false,
+    this.isInitializing = false,
     this.user,
     this.error,
     this.initialized = false,
@@ -15,6 +16,8 @@ class AuthState {
   });
 
   final bool isLoading;
+  /// Session restore on cold start — separate from [isLoading] (login/register).
+  final bool isInitializing;
   final bool initialized;
   final AuthUser? user;
   final String? error;
@@ -25,6 +28,7 @@ class AuthState {
 
   AuthState copyWith({
     bool? isLoading,
+    bool? isInitializing,
     bool? initialized,
     Object? user = _kUserKeep,
     String? error,
@@ -33,6 +37,7 @@ class AuthState {
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
+      isInitializing: isInitializing ?? this.isInitializing,
       initialized: initialized ?? this.initialized,
       user: identical(user, _kUserKeep) ? this.user : user as AuthUser?,
       error: clearError ? null : (error ?? this.error),

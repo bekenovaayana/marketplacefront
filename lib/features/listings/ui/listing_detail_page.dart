@@ -10,6 +10,7 @@ import 'package:marketplace_frontend/features/conversations/data/conversations_a
 import 'package:marketplace_frontend/features/conversations/state/conversations_controller.dart';
 import 'package:marketplace_frontend/features/conversations/ui/conversation_detail_page.dart';
 import 'package:marketplace_frontend/features/favorites/state/favorite_stale_guard.dart';
+import 'package:marketplace_frontend/core/routing/app_router.dart';
 import 'package:marketplace_frontend/features/listings/data/listing_details_repository.dart';
 import 'package:marketplace_frontend/features/listings/models/listing_detail.dart';
 import 'package:marketplace_frontend/features/posting/state/posting_controller.dart';
@@ -35,6 +36,7 @@ class _ListingDetailPageState extends ConsumerState<ListingDetailPage> {
   late Future<ListingDetail> _future;
   bool _messageBusy = false;
   bool _deleteBusy = false;
+  bool _promoteBusy = false;
 
   @override
   void initState() {
@@ -98,6 +100,7 @@ class _ListingDetailPageState extends ConsumerState<ListingDetailPage> {
           builder: (_) => ConversationDetailPage(
             conversationId: open.conversationId,
             peerTitle: title != 'Chat' ? title : null,
+            peerUserId: open.peer?.id ?? sellerId,
           ),
         ),
       );
@@ -113,6 +116,34 @@ class _ListingDetailPageState extends ConsumerState<ListingDetailPage> {
       );
     } finally {
       if (mounted) setState(() => _messageBusy = false);
+    }
+  }
+
+  Future<void> _quickPromoteFromWallet() async {
+    setState(() => _promoteBusy = true);
+    try {
+      final detail = await ref
+          .read(listingDetailsRepositoryProvider)
+          .promoteListingShortcut(widget.listingId);
+      if (!mounted) return;
+      setState(() {
+        _future = Future.value(detail);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Объявление поднято (boost 7 дн.)')),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ErrorMapper.friendly(e.message))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ErrorMapper.friendly(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _promoteBusy = false);
     }
   }
 
@@ -265,12 +296,26 @@ class _ListingDetailPageState extends ConsumerState<ListingDetailPage> {
                       children: [
                         _buildImageGallery(imageUrls),
                         const SizedBox(height: 12),
-                        Text(
-                          '${data.listing.price.toStringAsFixed(0)} ${data.listing.currency}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              '${data.listing.price.toStringAsFixed(0)} ${data.listing.currency}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            if (data.listing.isPromoted)
+                              Chip(
+                                label: const Text('Промо'),
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 8),
                         Text(
@@ -351,27 +396,65 @@ class _ListingDetailPageState extends ConsumerState<ListingDetailPage> {
                   ? SafeArea(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.error,
-                              foregroundColor:
-                                  Theme.of(context).colorScheme.onError,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (data.listing.isListingActive) ...[
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: _promoteBusy
+                                      ? null
+                                      : () => ref
+                                          .read(appRouterProvider)
+                                          .push('/promote'),
+                                  icon: const Icon(Icons.trending_up_outlined),
+                                  label: const Text('Промо (кошелёк)'),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.tonal(
+                                  onPressed: _promoteBusy
+                                      ? null
+                                      : _quickPromoteFromWallet,
+                                  child: _promoteBusy
+                                      ? const SizedBox(
+                                          height: 22,
+                                          width: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text('Быстро поднять (7 дн.)'),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor:
+                                      Theme.of(context).colorScheme.error,
+                                  foregroundColor:
+                                      Theme.of(context).colorScheme.onError,
+                                ),
+                                onPressed: _deleteBusy ? null : _confirmAndDelete,
+                                child: _deleteBusy
+                                    ? const SizedBox(
+                                        height: 22,
+                                        width: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Text(t('deleteListingButton')),
+                              ),
                             ),
-                            onPressed: _deleteBusy ? null : _confirmAndDelete,
-                            child: _deleteBusy
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Text(t('deleteListingButton')),
-                          ),
+                          ],
                         ),
                       ),
                     )

@@ -16,6 +16,7 @@ import 'package:marketplace_frontend/features/settings/ui/settings_notifications
 import 'package:marketplace_frontend/features/settings/ui/settings_password_screen.dart';
 import 'package:marketplace_frontend/features/settings/ui/settings_screen.dart';
 import 'package:marketplace_frontend/features/settings/ui/settings_theme_screen.dart';
+import 'package:marketplace_frontend/features/users/ui/user_profile_page.dart';
 import 'package:marketplace_frontend/shared/widgets/main_tabs_page.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -116,6 +117,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/wallet',
         builder: (context, state) => const WalletPage(),
+      ),
+      GoRoute(
+        path: '/user/:userId',
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['userId'] ?? '') ?? 0;
+          return UserProfilePage(userId: id);
+        },
       ),
       GoRoute(
         path: '/listings/new',

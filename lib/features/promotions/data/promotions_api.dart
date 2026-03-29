@@ -1,25 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:marketplace_frontend/core/constants/listing_currency.dart';
+import 'package:marketplace_frontend/core/errors/api_exception.dart';
+import 'package:marketplace_frontend/core/json/json_read.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:marketplace_frontend/core/network/dio_client.dart';
 
 final promotionsApiProvider = Provider<PromotionsApi>((ref) {
   return PromotionsApi(ref.watch(dioProvider));
 });
-
-class PromotionDto {
-  const PromotionDto({required this.id, required this.status});
-
-  final int id;
-  final String status;
-
-  factory PromotionDto.fromJson(Map<String, dynamic> json) {
-    return PromotionDto(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      status: json['status'] as String? ?? 'pending',
-    );
-  }
-}
 
 class PromotionOptionDto {
   const PromotionOptionDto({
@@ -62,6 +50,53 @@ class PromotionsCheckoutResponse {
       currency: json['currency'] as String?,
     );
   }
+}
+
+/// Successful wallet purchase: **POST /promotions** (201).
+class WalletPromotionPurchaseResult {
+  const WalletPromotionPurchaseResult({
+    required this.id,
+    required this.type,
+    this.expiresAt,
+  });
+
+  final int id;
+  final String type;
+  final DateTime? expiresAt;
+
+  factory WalletPromotionPurchaseResult.fromJson(Map<String, dynamic> json) {
+    return WalletPromotionPurchaseResult(
+      id: JsonRead.intVal(json['id']),
+      type: JsonRead.string(json['type']),
+      expiresAt: DateTime.tryParse(
+        JsonRead.string(json['expires_at'] ?? json['expiresAt']),
+      ),
+    );
+  }
+}
+
+/// UI hint only — server charges the real amount (**boost/top/vip KGS × days**).
+class PromotionWalletPricing {
+  PromotionWalletPricing._();
+
+  static const double boostPerDay = 20;
+  static const double topPerDay = 40;
+  static const double vipPerDay = 100;
+
+  static double estimateKgsPerDay(String type) {
+    switch (type) {
+      case 'top':
+        return topPerDay;
+      case 'vip':
+        return vipPerDay;
+      case 'boost':
+      default:
+        return boostPerDay;
+    }
+  }
+
+  static double estimateTotal(String type, int days) =>
+      estimateKgsPerDay(type) * days;
 }
 
 class PromotionListItem {
@@ -142,21 +177,38 @@ class PromotionsApi {
     );
   }
 
-  Future<PromotionDto> createPromotion({
+  /// Wallet promo (**POST /promotions**) — not checkout. **400** = insufficient balance (detail from API).
+  Future<WalletPromotionPurchaseResult> purchasePromotionFromWallet({
     required int listingId,
-    required String promotionType,
-    required String targetCity,
-    required int durationDays,
+    required String type,
+    int days = 7,
   }) async {
-    final response = await _dio.post(
-      '/promotions',
-      data: {
-        'listing_id': listingId,
-        'promotion_type': promotionType,
-        'target_city': targetCity,
-        'duration_days': durationDays,
-      },
-    );
-    return PromotionDto.fromJson(response.data as Map<String, dynamic>);
+    try {
+      final response = await _dio.post<dynamic>(
+        '/promotions',
+        data: {
+          'listing_id': listingId,
+          'type': type,
+          'days': days,
+        },
+      );
+      final data = response.data;
+      if (data is! Map<String, dynamic>) {
+        throw const ApiException('Invalid promotion response');
+      }
+      return WalletPromotionPurchaseResult.fromJson(data);
+    } on DioException catch (e) {
+      final msg = _extractDetail(e) ?? e.message ?? 'Promotion failed';
+      throw ApiException(msg, statusCode: e.response?.statusCode);
+    }
+  }
+
+  static String? _extractDetail(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      final detail = data['detail'];
+      if (detail is String && detail.isNotEmpty) return detail;
+    }
+    return null;
   }
 }

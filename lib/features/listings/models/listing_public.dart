@@ -39,6 +39,8 @@ class ListingPublic {
     this.categoryId,
     this.favoritesCount = 0,
     this.viewsCount = 0,
+    this.status,
+    this.isPromoted = false,
   });
 
   @JsonKey(name: 'id')
@@ -69,8 +71,15 @@ class ListingPublic {
   final int favoritesCount;
   @JsonKey(name: 'view_count')
   final int viewsCount;
+  /// e.g. `active` — when absent, treat as active for public cards.
+  final String? status;
+  @JsonKey(name: 'is_promoted')
+  final bool isPromoted;
 
   String get primaryImage => images.isEmpty ? '' : images.first.url;
+
+  bool get isListingActive =>
+      status == null || status!.isEmpty || status == 'active';
 
   factory ListingPublic.fromJson(Map<String, dynamic> json) {
     final List<ListingImage> images;
@@ -129,6 +138,11 @@ class ListingPublic {
       viewsCount: JsonRead.intVal(
         json['view_count'] ?? json['views_count'] ?? json['views'],
       ),
+      status: () {
+        final s = JsonRead.string(json['status']).trim();
+        return s.isEmpty ? null : s;
+      }(),
+      isPromoted: JsonRead.boolVal(json['is_promoted'] ?? json['isPromoted']),
     );
   }
 
@@ -139,6 +153,8 @@ class ListingPublic {
     int? categoryId,
     int? favoritesCount,
     int? viewsCount,
+    String? status,
+    bool? isPromoted,
   }) {
     return ListingPublic(
       id: id,
@@ -155,6 +171,8 @@ class ListingPublic {
       categoryId: categoryId ?? this.categoryId,
       favoritesCount: favoritesCount ?? this.favoritesCount,
       viewsCount: viewsCount ?? this.viewsCount,
+      status: status ?? this.status,
+      isPromoted: isPromoted ?? this.isPromoted,
     );
   }
 }

@@ -200,6 +200,11 @@ class ConversationsApi {
     }
   }
 
+  /// Remove conversation for the current user (**DELETE** /conversations/{id}).
+  Future<void> deleteConversation(int conversationId) async {
+    await _dio.delete<void>('/conversations/$conversationId');
+  }
+
   Future<UnreadSummaryDto> getUnreadSummary() async {
     final response = await _dio.get<dynamic>('/chats/unread-summary');
     final raw = response.data;

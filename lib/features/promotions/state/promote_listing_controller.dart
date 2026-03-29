@@ -7,44 +7,45 @@ import 'package:marketplace_frontend/features/promotions/data/promotions_api.dar
 class PromoteListingState {
   const PromoteListingState({
     this.isLoading = false,
-    this.isPaying = false,
+    this.isPurchasing = false,
     this.activeListings = const [],
-    this.options = const [],
     this.selectedListingId,
-    this.selectedDays,
-    this.checkout,
+    this.selectedType = 'boost',
+    this.selectedDays = 7,
+    this.lastPurchase,
     this.error,
   });
 
   final bool isLoading;
-  final bool isPaying;
+  final bool isPurchasing;
   final List<ListingMine> activeListings;
-  final List<PromotionOptionDto> options;
   final int? selectedListingId;
-  final int? selectedDays;
-  final PromotionsCheckoutResponse? checkout;
+  /// `boost` | `top` | `vip`
+  final String selectedType;
+  final int selectedDays;
+  final WalletPromotionPurchaseResult? lastPurchase;
   final Object? error;
 
   PromoteListingState copyWith({
     bool? isLoading,
-    bool? isPaying,
+    bool? isPurchasing,
     List<ListingMine>? activeListings,
-    List<PromotionOptionDto>? options,
     int? selectedListingId,
+    String? selectedType,
     int? selectedDays,
-    PromotionsCheckoutResponse? checkout,
+    WalletPromotionPurchaseResult? lastPurchase,
     Object? error,
     bool clearError = false,
-    bool clearCheckout = false,
+    bool clearPurchase = false,
   }) {
     return PromoteListingState(
       isLoading: isLoading ?? this.isLoading,
-      isPaying: isPaying ?? this.isPaying,
+      isPurchasing: isPurchasing ?? this.isPurchasing,
       activeListings: activeListings ?? this.activeListings,
-      options: options ?? this.options,
       selectedListingId: selectedListingId ?? this.selectedListingId,
+      selectedType: selectedType ?? this.selectedType,
       selectedDays: selectedDays ?? this.selectedDays,
-      checkout: clearCheckout ? null : (checkout ?? this.checkout),
+      lastPurchase: clearPurchase ? null : (lastPurchase ?? this.lastPurchase),
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -69,85 +70,83 @@ class PromoteListingController extends StateNotifier<PromoteListingState> {
     state = state.copyWith(
       isLoading: true,
       clearError: true,
-      clearCheckout: true,
+      clearPurchase: true,
     );
     try {
-      final results = await Future.wait([
-        _postingRepo.myListings(status: 'active', page: 1, pageSize: 20),
-        _promotionsApi.getOptions(),
-      ]);
-      final listings = results[0] as List<ListingMine>;
-      final options = results[1] as List<PromotionOptionDto>;
+      final listings = await _postingRepo.myListings(
+        status: 'active',
+        page: 1,
+        pageSize: 20,
+      );
       final nextListingId =
           state.selectedListingId ??
           (listings.isEmpty ? null : listings.first.id);
-      final nextDays = state.selectedDays ?? _defaultDays(options);
-
       state = state.copyWith(
         isLoading: false,
         activeListings: listings,
-        options: options,
         selectedListingId: nextListingId,
-        selectedDays: nextDays,
       );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e);
     }
   }
 
-  int? _defaultDays(List<PromotionOptionDto> options) {
-    if (options.isEmpty) return null;
-    final days = options.map((e) => e.days).toList()..sort();
-    return days.first;
-  }
-
   void selectListing(int? id) {
     state = state.copyWith(
       selectedListingId: id,
       clearError: true,
-      clearCheckout: true,
+      clearPurchase: true,
     );
   }
 
-  void selectDays(int? days) {
+  void selectType(String type) {
     state = state.copyWith(
-      selectedDays: days,
+      selectedType: type,
       clearError: true,
-      clearCheckout: true,
+      clearPurchase: true,
     );
   }
 
-  PromotionOptionDto? get selectedOption {
-    final days = state.selectedDays;
-    if (days == null) return null;
-    for (final o in state.options) {
-      if (o.days == days) return o;
-    }
-    return null;
+  void selectDays(int days) {
+    final clamped = days.clamp(1, 365);
+    state = state.copyWith(
+      selectedDays: clamped,
+      clearError: true,
+      clearPurchase: true,
+    );
   }
 
-  Future<void> pay() async {
+  double get estimatedTotalKgs =>
+      PromotionWalletPricing.estimateTotal(state.selectedType, state.selectedDays);
+
+  /// **POST /promotions** (wallet). **400** = insufficient funds (message from API).
+  Future<WalletPromotionPurchaseResult?> purchaseFromWallet() async {
     final listingId = state.selectedListingId;
-    final days = state.selectedDays;
-    if (listingId == null || days == null) {
+    if (listingId == null) {
       state = state.copyWith(
-        error: const ApiException('Select listing and duration'),
+        error: const ApiException('Выберите объявление'),
       );
-      return;
+      return null;
     }
     state = state.copyWith(
-      isPaying: true,
+      isPurchasing: true,
       clearError: true,
-      clearCheckout: true,
+      clearPurchase: true,
     );
     try {
-      final checkout = await _promotionsApi.checkout(
+      final result = await _promotionsApi.purchasePromotionFromWallet(
         listingId: listingId,
-        days: days,
+        type: state.selectedType,
+        days: state.selectedDays,
       );
-      state = state.copyWith(isPaying: false, checkout: checkout);
+      state = state.copyWith(
+        isPurchasing: false,
+        lastPurchase: result,
+      );
+      return result;
     } catch (e) {
-      state = state.copyWith(isPaying: false, error: e);
+      state = state.copyWith(isPurchasing: false, error: e);
+      rethrow;
     }
   }
 }

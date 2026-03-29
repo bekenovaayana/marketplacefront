@@ -6,6 +6,11 @@ import 'package:marketplace_frontend/features/auth/data/auth_repository.dart';
 import 'package:marketplace_frontend/features/auth/state/auth_state.dart';
 import 'package:marketplace_frontend/features/favorites/state/favorite_stale_guard.dart';
 
+void _authDebugPrint(String message) {
+  // ignore: avoid_print
+  print(message);
+}
+
 final authControllerProvider = StateNotifierProvider<AuthController, AuthState>(
   (ref) {
     return AuthController(
@@ -35,12 +40,10 @@ class AuthController extends StateNotifier<AuthState> {
     if (state.initialized) {
       return;
     }
-    state = state.copyWith(isLoading: true, clearError: true);
+    state = state.copyWith(isInitializing: true, clearError: true);
     try {
       final user = await _repository.restoreSession();
       state = state.copyWith(
-        isLoading: false,
-        initialized: true,
         user: user,
         mode: user == null ? AuthMode.guest : AuthMode.authenticated,
       );
@@ -49,44 +52,46 @@ class AuthController extends StateNotifier<AuthState> {
         debugPrint('AUTH INIT ERROR: $e\n$st');
       }
       state = state.copyWith(
-        isLoading: false,
-        initialized: true,
         user: null,
         mode: AuthMode.guest,
         error: e.toString(),
       );
+    } finally {
+      state = state.copyWith(initialized: true, isInitializing: false);
     }
   }
 
   Future<bool> login({required String email, required String password}) async {
-    if (kDebugMode) {
-      debugPrint('LOGIN START');
-    }
+    _authDebugPrint('LOGIN START');
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final session = await _repository.login(email: email, password: password);
-      if (kDebugMode) {
-        debugPrint('LOGIN SUCCESS (token saved, profile loaded id=${session.user.id})');
-      }
+      _authDebugPrint('LOGIN SUCCESS');
       state = state.copyWith(
-        isLoading: false,
         user: session.user,
         mode: AuthMode.authenticated,
       );
-      _reauthCoordinator.resolve(true);
+      try {
+        _reauthCoordinator.resolve(true);
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('reauthCoordinator.resolve after login: $e\n$st');
+        }
+      }
       return true;
     } on ApiException catch (e) {
-      if (kDebugMode) {
-        debugPrint('LOGIN FAIL: ${e.message}');
-      }
-      state = state.copyWith(isLoading: false, error: e.message);
+      _authDebugPrint('LOGIN ERROR: $e');
+      state = state.copyWith(error: e.message);
       return false;
     } catch (e, st) {
+      _authDebugPrint('LOGIN ERROR: $e');
       if (kDebugMode) {
-        debugPrint('LOGIN UNEXPECTED ERROR: $e\n$st');
+        debugPrint('$st');
       }
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(error: e.toString());
       return false;
+    } finally {
+      state = state.copyWith(isLoading: false);
     }
   }
 
@@ -95,6 +100,7 @@ class AuthController extends StateNotifier<AuthState> {
     required String email,
     required String password,
   }) async {
+    _authDebugPrint('REGISTER START');
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       await _repository.register(
@@ -103,22 +109,32 @@ class AuthController extends StateNotifier<AuthState> {
         password: password,
       );
       final session = await _repository.login(email: email, password: password);
+      _authDebugPrint('REGISTER SUCCESS');
       state = state.copyWith(
-        isLoading: false,
         user: session.user,
         mode: AuthMode.authenticated,
       );
-      _reauthCoordinator.resolve(true);
+      try {
+        _reauthCoordinator.resolve(true);
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('reauthCoordinator.resolve after register: $e\n$st');
+        }
+      }
       return true;
     } on ApiException catch (e) {
-      state = state.copyWith(isLoading: false, error: e.message);
+      _authDebugPrint('REGISTER ERROR: $e');
+      state = state.copyWith(error: e.message);
       return false;
     } catch (e, st) {
+      _authDebugPrint('REGISTER ERROR: $e');
       if (kDebugMode) {
-        debugPrint('REGISTER UNEXPECTED ERROR: $e\n$st');
+        debugPrint('$st');
       }
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(error: e.toString());
       return false;
+    } finally {
+      state = state.copyWith(isLoading: false);
     }
   }
 
@@ -128,6 +144,7 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(
       user: null,
       initialized: true,
+      isLoading: false,
       clearError: true,
       mode: AuthMode.guest,
     );
@@ -140,6 +157,7 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(
       user: null,
       initialized: true,
+      isLoading: false,
       clearError: true,
       mode: AuthMode.guest,
     );

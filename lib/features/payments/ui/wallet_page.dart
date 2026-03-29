@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:marketplace_frontend/features/payments/ui/payments_page.dart';
+import 'package:marketplace_frontend/features/wallet/ui/wallet_screen.dart';
 
-/// Entry point from profile (balance / payment flows).
+/// Вход из профиля: **GET /wallet** или **/api/wallet**, пополнение **POST** с тем же fallback путей.
 class WalletPage extends StatelessWidget {
   const WalletPage({super.key});
 
   @override
-  Widget build(BuildContext context) => const PaymentsPage();
+  Widget build(BuildContext context) => const WalletScreen();
 }

@@ -27,6 +27,16 @@ class ListingDetailsRepository {
 
   Future<ListingDetail> getById(int id) => fetchDetail(id);
 
+  /// **POST /listings/:id/promote** — шорткат boost 7 дн.; тело полного объявления (owner read).
+  Future<ListingDetail> promoteListingShortcut(int id) async {
+    final response = await _dio.post<dynamic>('/listings/$id/promote');
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      throw const ApiException('Invalid listing response');
+    }
+    return ListingDetail.fromJson(data);
+  }
+
   /// [DELETE /listings/:id] — 204 success; 403 not owner; 404 missing or removed.
   Future<void> deleteListing(int id) async {
     try {

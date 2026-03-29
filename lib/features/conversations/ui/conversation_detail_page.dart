@@ -5,15 +5,19 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:marketplace_frontend/core/routing/app_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:marketplace_frontend/features/conversations/data/attachment_repository.dart';
 import 'package:marketplace_frontend/features/conversations/data/conversation_models.dart';
 import 'package:marketplace_frontend/features/conversations/data/conversations_api.dart';
+import 'package:marketplace_frontend/features/conversations/data/conversations_repository.dart';
 import 'package:marketplace_frontend/features/conversations/presentation/pending_attachment.dart';
+import 'package:marketplace_frontend/features/auth/state/auth_controller.dart';
 import 'package:marketplace_frontend/features/conversations/state/conversations_controller.dart';
 import 'package:marketplace_frontend/features/conversations/ui/widgets/chat_input_bar.dart';
 import 'package:marketplace_frontend/features/conversations/ui/widgets/message_attachment_view.dart';
 import 'package:marketplace_frontend/features/notifications/state/unread_notifications_provider.dart';
+import 'package:marketplace_frontend/features/users/data/users_repository.dart';
 import 'package:marketplace_frontend/shared/widgets/app_notification_overlay.dart';
 import 'package:marketplace_frontend/shared/widgets/app_scaffold.dart';
 
@@ -22,10 +26,13 @@ class ConversationDetailPage extends ConsumerStatefulWidget {
     super.key,
     required this.conversationId,
     this.peerTitle,
+    this.peerUserId,
   });
 
   final int conversationId;
   final String? peerTitle;
+  /// When known (e.g. from conversation list), enables **View profile**.
+  final int? peerUserId;
 
   @override
   ConsumerState<ConversationDetailPage> createState() =>
@@ -153,6 +160,8 @@ class _ConversationDetailPageState
         .toList();
     if (_isSending || hasUploading) return;
     if (text.isEmpty && readyAttachments.isEmpty) return;
+    final myId = ref.read(authControllerProvider).user?.id;
+    if (myId == null) return;
     final api = _conversationsApi;
     final requestId = api.buildIdempotencyKey();
     final attachmentPayload = readyAttachments
@@ -168,7 +177,7 @@ class _ConversationDetailPageState
         .toList();
     final optimistic = ConversationMessage(
       id: -DateTime.now().millisecondsSinceEpoch,
-      senderId: 0,
+      senderId: myId,
       text: text,
       sentAt: DateTime.now(),
       isMine: true,
@@ -226,13 +235,86 @@ class _ConversationDetailPageState
     }
   }
 
+  void _openProfile() {
+    final id = widget.peerUserId;
+    if (id == null || id <= 0) return;
+    ref.read(appRouterProvider).push('/user/$id');
+  }
+
+  Future<void> _deleteChat() async {
+    try {
+      await ref
+          .read(conversationsRepositoryProvider)
+          .deleteConversation(widget.conversationId);
+      ref.invalidate(conversationsControllerProvider);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      showAppNotification(context, 'Could not delete chat. Try again.');
+    }
+  }
+
+  Future<void> _blockUser() async {
+    final id = widget.peerUserId;
+    if (id == null || id <= 0) return;
+    try {
+      await ref.read(usersRepositoryProvider).blockUser(id);
+      if (!mounted) return;
+      showAppNotification(context, 'User blocked.');
+    } catch (e) {
+      if (!mounted) return;
+      showAppNotification(context, 'Could not block user. Try again.');
+    }
+  }
+
+  Future<void> _onChatMenuSelected(String value) async {
+    switch (value) {
+      case 'profile':
+        _openProfile();
+        break;
+      case 'delete':
+        await _deleteChat();
+        break;
+      case 'block':
+        await _blockUser();
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentUserId = ref.watch(authControllerProvider).user?.id ?? 0;
     final barTitle = widget.peerTitle?.trim().isNotEmpty == true
         ? widget.peerTitle!.trim()
         : 'Messages';
+    final peerId = widget.peerUserId;
+    final hasPeer =
+        peerId != null && peerId > 0 && peerId != currentUserId;
     return AppScaffold(
       title: barTitle,
+      actions: [
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert),
+          onSelected: _onChatMenuSelected,
+          itemBuilder: (context) => [
+            if (hasPeer)
+              const PopupMenuItem(
+                value: 'profile',
+                child: Text('Профиль'),
+              ),
+            const PopupMenuItem(
+              value: 'delete',
+              child: Text('Удалить чат'),
+            ),
+            if (hasPeer)
+              const PopupMenuItem(
+                value: 'block',
+                child: Text('Заблокировать'),
+              ),
+          ],
+        ),
+      ],
       body: Column(
         children: [
           Expanded(
@@ -282,6 +364,7 @@ class _ConversationDetailPageState
                         }
                         return _MessageBubbleRow(
                           msg: msg,
+                          currentUserId: currentUserId,
                           formatTime: _formatTime,
                         );
                       },
@@ -497,15 +580,17 @@ class _ConversationDetailPageState
 class _MessageBubbleRow extends StatelessWidget {
   const _MessageBubbleRow({
     required this.msg,
+    required this.currentUserId,
     required this.formatTime,
   });
 
   final ConversationMessage msg;
+  final int currentUserId;
   final String Function(DateTime date) formatTime;
 
   @override
   Widget build(BuildContext context) {
-    final mine = msg.layoutIsMine;
+    final mine = msg.isFromCurrentUser(currentUserId);
     final maxW = MediaQuery.sizeOf(context).width * 0.78;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bubbleColor = mine

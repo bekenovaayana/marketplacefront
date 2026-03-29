@@ -7,41 +7,67 @@ import 'package:marketplace_frontend/features/profile/data/profile_models.dart';
 
 void main() {
   group('ConversationMessage', () {
-    test('bubble side follows is_mine only (no sender_id guess)', () {
-      final m = ConversationMessage.fromJson({
+    const me = 7;
+
+    test('bubble side uses sender_id vs current user (POST may omit is_mine)', () {
+      final mineMsg = ConversationMessage.fromJson({
         'id': 1,
-        'sender_id': 99,
+        'sender_id': me,
         'text_body': 'hi',
         'sent_at': '2020-01-01T00:00:00Z',
-        'is_mine': true,
+        'is_mine': false,
       });
-      expect(m.isMine, isTrue);
-      expect(m.layoutIsMine, isTrue);
+      expect(mineMsg.isMine, isFalse);
+      expect(mineMsg.isFromCurrentUser(me), isTrue);
+
       final other = ConversationMessage.fromJson({
         'id': 2,
         'sender_id': 1,
         'text_body': 'yo',
         'sent_at': '2020-01-01T00:00:00Z',
-        'is_mine': false,
+        'is_mine': true,
       });
-      expect(other.isMine, isFalse);
-      expect(other.layoutIsMine, isFalse);
-      final noFlag = ConversationMessage.fromJson({
+      expect(other.isMine, isTrue);
+      expect(other.isFromCurrentUser(me), isFalse);
+    });
+
+    test('falls back to is_mine when sender id missing', () {
+      final noSender = ConversationMessage.fromJson({
         'id': 3,
-        'sender_id': 1,
         'text_body': 'x',
         'sent_at': '2020-01-01T00:00:00Z',
+        'is_mine': true,
       });
-      expect(noFlag.isMine, isFalse);
-      expect(noFlag.layoutIsMine, isFalse);
+      expect(noSender.senderId, 0);
+      expect(noSender.isFromCurrentUser(me), isTrue);
+    });
+
+    test('parses user_id / author_id as sender', () {
+      final a = ConversationMessage.fromJson({
+        'id': 4,
+        'user_id': 42,
+        'text_body': 'a',
+        'sent_at': '2020-01-01T00:00:00Z',
+      });
+      expect(a.senderId, 42);
+      final b = ConversationMessage.fromJson({
+        'id': 5,
+        'author_id': 43,
+        'text_body': 'b',
+        'sent_at': '2020-01-01T00:00:00Z',
+      });
+      expect(b.senderId, 43);
+    });
+
+    test('optimistic row is always mine when sender matches', () {
       final optimistic = ConversationMessage(
         id: -1,
-        senderId: 0,
+        senderId: me,
         text: 't',
         sentAt: DateTime.utc(2020),
         isMine: true,
       );
-      expect(optimistic.layoutIsMine, isTrue);
+      expect(optimistic.isFromCurrentUser(me), isTrue);
     });
   });
 

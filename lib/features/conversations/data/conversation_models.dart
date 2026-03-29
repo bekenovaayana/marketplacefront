@@ -68,6 +68,7 @@ class Conversation {
     this.listingImageUrl,
     this.peerName,
     this.peerAvatarUrl,
+    this.peerUserId,
   });
 
   final int id;
@@ -81,6 +82,8 @@ class Conversation {
   final String? listingImageUrl;
   final String? peerName;
   final String? peerAvatarUrl;
+  /// Counterparty user id when API provides `peer.id` or `peer_user_id`.
+  final int? peerUserId;
 
   String get displayTitle {
     if (peerName != null && peerName!.trim().isNotEmpty) {
@@ -148,6 +151,9 @@ class Conversation {
                 json['listing_image_url'] ?? json['listing_image'] ?? json['listingImageUrl'],
               );
 
+    final peerUserId = peer?.id ??
+        JsonRead.intNullable(json['peer_user_id'] ?? json['peerUserId']);
+
     return Conversation(
       id: JsonRead.intVal(json['id']),
       title: title.isEmpty ? 'Chat' : title,
@@ -168,6 +174,7 @@ class Conversation {
       listingImageUrl: listingImageUrl,
       peerName: peerName,
       peerAvatarUrl: peerAvatarUrl,
+      peerUserId: peerUserId,
     );
   }
 
@@ -186,6 +193,7 @@ class Conversation {
       listingImageUrl: listingImageUrl,
       peerName: peerName,
       peerAvatarUrl: peerAvatarUrl,
+      peerUserId: peerUserId,
     );
   }
 }
@@ -197,24 +205,37 @@ class ConversationMessage {
     required this.text,
     required this.sentAt,
     this.attachments = const [],
-    /// API `is_mine` / `isMine` — only source for left/right (plus optimistic negative [id]).
+    /// From API when present; used only if [senderId] is **0** (sender not in JSON).
     required this.isMine,
   });
 
   final int id;
+  /// Canonical sender: **`sender_id`** from API; falls back to `user_id` / `author_id` aliases.
   final int senderId;
   final String text;
   final DateTime sentAt;
   final List<MessageAttachment> attachments;
   final bool isMine;
 
-  /// Optimistic temp ids are always «mine»; otherwise strictly [isMine] from JSON.
-  bool get layoutIsMine => id < 0 || isMine;
+  /// Bubble side: prefer **`senderId == currentUserId`**; optimistic temp ids ([id] negative) are always mine.
+  bool isFromCurrentUser(int currentUserId) {
+    if (id < 0) return true;
+    if (senderId != 0) return senderId == currentUserId;
+    return isMine;
+  }
 
   factory ConversationMessage.fromJson(Map<String, dynamic> json) {
+    final sender = JsonRead.intVal(
+      json['sender_id'] ??
+          json['senderId'] ??
+          json['user_id'] ??
+          json['userId'] ??
+          json['author_id'] ??
+          json['authorId'],
+    );
     return ConversationMessage(
       id: JsonRead.intVal(json['id']),
-      senderId: JsonRead.intVal(json['sender_id'] ?? json['senderId']),
+      senderId: sender,
       text: JsonRead.string(
         json['text_body'] ?? json['content'] ?? json['text'],
       ),
