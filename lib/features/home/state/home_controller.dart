@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:marketplace_frontend/core/errors/error_mapper.dart';
 import 'package:marketplace_frontend/features/favorites/state/favorite_stale_guard.dart';
 import 'package:marketplace_frontend/features/home/data/home_repository.dart';
 import 'package:marketplace_frontend/features/home/models/home_models.dart';
@@ -121,7 +122,10 @@ class HomeController extends StateNotifier<HomeState> {
         totalItems: home.latest.length,
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        error: ErrorMapper.friendly(e),
+      );
     }
   }
 
@@ -215,7 +219,10 @@ class HomeController extends StateNotifier<HomeState> {
         totalItems: result.totalItems,
       );
     } catch (e) {
-      state = state.copyWith(isLoadingMore: false, error: e.toString());
+      state = state.copyWith(
+        isLoadingMore: false,
+        error: ErrorMapper.friendly(e),
+      );
     }
   }
 

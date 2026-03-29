@@ -33,9 +33,12 @@ final tokenStorageProvider = Provider<TokenStorage>((ref) {
 final dioProvider = Provider<Dio>((ref) {
   final tokenStorage = ref.watch(tokenStorageProvider);
   final coordinator = ref.watch(reauthCoordinatorProvider);
+  final baseUrl = Env.baseUrl;
+  // ignore: avoid_print
+  print('BASE URL: $baseUrl');
   final dio = Dio(
     BaseOptions(
-      baseUrl: Env.baseUrl,
+      baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
       sendTimeout: const Duration(seconds: 15),

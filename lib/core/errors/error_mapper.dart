@@ -3,6 +3,13 @@ class ErrorMapper {
     final text = (error ?? '').toString();
     final lower = text.toLowerCase();
 
+    // Dio бросает многострочное описание; `^.*message:` не срабатывает — ловим 500 раньше.
+    if (lower.contains('status code of 500') ||
+        lower.contains('status: 500') ||
+        (lower.contains('apiexception') && lower.contains('500'))) {
+      return 'Сервер временно недоступен. Попробуйте позже.';
+    }
+
     if (lower.contains('socketexception') ||
         lower.contains('failed host lookup') ||
         lower.contains('connection error')) {
@@ -32,11 +39,15 @@ class ErrorMapper {
     if (lower.contains('422')) {
       return 'Validation failed. Please check the entered data.';
     }
-    if (lower.contains('apiexception(')) {
-      return text
-          .replaceFirst(RegExp(r'^.*message:\s*'), '')
-          .replaceAll(')', '')
-          .trim();
+    if (lower.contains('apiexception')) {
+      final m =
+          RegExp(r'message:\s*([^\)\n]+)', caseSensitive: false).firstMatch(text);
+      if (m != null) {
+        final inner = m.group(1)?.trim();
+        if (inner != null && inner.isNotEmpty) {
+          return inner;
+        }
+      }
     }
     return 'Something went wrong. Please try again.';
   }

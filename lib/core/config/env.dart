@@ -1,12 +1,16 @@
 import 'package:flutter/foundation.dart';
 
-/// API base URL. Set at build time, e.g.
-/// `flutter run --dart-define=API_BASE_URL=http://127.0.0.1:8000`
+/// API base URL. Задаётся при сборке:
+/// `flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000`
 ///
-/// Typical values:
-/// - Android emulator → `http://10.0.2.2:8000` (default here)
-/// - iOS simulator / desktop → `http://127.0.0.1:8000`
-/// - Physical device on LAN → `http://<your_PC_LAN_IP>:8000`
+/// Без `--dart-define`: **Android (эмулятор)** → `http://10.0.2.2:8000`,
+/// iOS / desktop / web → `http://127.0.0.1:8000`.
+///
+/// Другие среды (iOS-симулятор, desktop, браузер на этой же машине) при необходимости:
+/// `--dart-define=API_BASE_URL=http://127.0.0.1:8000`
+///
+/// Физическое устройство в Wi‑Fi:
+/// `--dart-define=API_BASE_URL=http://<LAN_IP_ПК>:8000`
 ///
 /// Media URLs from the API must use a host reachable from this device (same as
 /// the server’s public/base URL); otherwise [Image.network] will fail even if
@@ -14,9 +18,12 @@ import 'package:flutter/foundation.dart';
 ///
 /// **Пустая главная / ошибка сети:** убедитесь, что по этому же origin отвечает
 /// бэкенд (`GET /home`, `GET /listings`), в БД есть объявления со статусом
-/// `active`, и с **физического телефона** задан LAN-IP ПК, а не `127.0.0.1` /
-/// `10.0.2.2`.
+/// `active`, и с **физического телефона** задан LAN-IP ПК, а не только
+/// `10.0.2.2` / `127.0.0.1`.
 class Env {
+  static const String _androidEmulatorHost = 'http://10.0.2.2:8000';
+  static const String _loopbackHost = 'http://127.0.0.1:8000';
+
   static const String _apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: '',
@@ -33,13 +40,13 @@ class Env {
       return fromDefine.replaceAll(RegExp(r'/$'), '');
     }
     if (kIsWeb) {
-      return 'http://127.0.0.1:8000';
+      return _loopbackHost;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        return 'http://10.0.2.2:8000';
+        return _androidEmulatorHost;
       default:
-        return 'http://127.0.0.1:8000';
+        return _loopbackHost;
     }
   }
 }

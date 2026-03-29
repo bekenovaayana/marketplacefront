@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:marketplace_frontend/core/config/env.dart';
-import 'package:marketplace_frontend/core/errors/error_mapper.dart';
 import 'package:marketplace_frontend/features/favorites/state/favorites_controller.dart';
 import 'package:marketplace_frontend/features/home/data/home_repository.dart';
 import 'package:marketplace_frontend/features/home/state/home_controller.dart';
@@ -103,7 +102,7 @@ class _HomeTabState extends ConsumerState<HomeTab>
             if (state.error != null)
               ListTile(
                 isThreeLine: true,
-                title: Text(ErrorMapper.friendly(state.error)),
+                title: Text(state.error!),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

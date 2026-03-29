@@ -1,4 +1,4 @@
-﻿# Marketplace Frontend (Flutter-only)
+# Marketplace Frontend (Flutter-only)
 
 Flutter client for the marketplace backend.
 
@@ -12,16 +12,22 @@ Flutter client for the marketplace backend.
 - Running backend API (FastAPI)
 
 ## Configure API URL
-Use `API_BASE_URL` define (preferred):
+Use `API_BASE_URL` define (preferred). **Android emulator** (default in `Env` is the same host):
 
 ```bash
-flutter run --dart-define=API_BASE_URL=http://127.0.0.1:8000
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000
 ```
 
 Backward-compatible define is also supported:
 
 ```bash
-flutter run --dart-define=VITE_API_URL=http://127.0.0.1:8000
+flutter run --dart-define=VITE_API_URL=http://10.0.2.2:8000
+```
+
+iOS simulator / desktop / browser on the same PC, if needed:
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://127.0.0.1:8000
 ```
 
 ## Run
